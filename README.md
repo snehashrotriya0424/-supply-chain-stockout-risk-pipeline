@@ -94,3 +94,6 @@ Most portfolio projects stop at "I made a dashboard from a Kaggle CSV" or "I tra
 ## Honest limitations (worth saying out loud in an interview)
 - Data is synthetic — the patterns are real and internally consistent, but it's not a live production system with the messiness real data has (missing values, schema drift, duplicate records).
 - The model is intentionally simple (logistic regression / random forest on engineered features) — the natural next step toward the AI/data-engineer direction is wrapping this in an orchestrated pipeline (Airflow/Prefect) that re-runs weekly and retrains on a rolling window, plus comparing against a time-series-specific model (e.g. Prophet) for the demand side specifically.
+- <img width="1535" height="847" alt="Screenshot 2026-06-26 192747" src="https://github.com/user-attachments/assets/581bd47a-128f-4d72-bc6e-5417fce4c27d" />
+<img width="1526" height="687" alt="Screenshot 2026-06-26 192725" src="https://github.com/user-attachments/assets/8b82cf27-6d01-43e2-8f95-b9ec2f89a10e" />
+
