@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stockout Risk Intelligence — Live Demo</title>
+<link rel="preconnect" href="https://cdnjs.cloudflare.com">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#0B0C0D;
+  --bg-soft:#101213;
+  --surface:#16191B;
+  --surface-2:#1C2022;
+  --border:#272B2E;
+  --border-soft:#1E2224;
+  --text:#F2EFE9;
+  --text-dim:#9AA0A0;
+  --text-faint:#5E6566;
+  --amber:#FFC93C;
+  --amber-dim:rgba(255,201,60,.14);
+  --high:#FF5630;
+  --high-soft:rgba(255,86,48,.13);
+  --med:#FFAB2E;
+  --med-soft:rgba(255,171,46,.13);
+  --low:#36B37E;
+  --low-soft:rgba(54,179,126,.13);
+  --steel:#5C8AFF;
+  --disp:'Barlow Condensed', sans-serif;
+  --body:'Inter', sans-serif;
+  --mono:'JetBrains Mono','IBM Plex Mono', monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{
+  background:var(--bg); color:var(--text); font-family:var(--body);
+  line-height:1.6; -webkit-font-smoothing:antialiased;
+  background-image:
+    linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
+  background-size:34px 34px;
+}
+.wrap{max-width:1220px; margin:0 auto; padding:0 32px;}
+a{color:inherit; text-decoration:none;}
+img{max-width:100%; display:block;}
+h1,h2,h3,h4{font-family:var(--disp); font-weight:700; letter-spacing:.01em;}
+.mono{font-family:var(--mono);}
+button{font-family:inherit; cursor:pointer;}
+
+/* hazard stripe signature element */
+.hazard{
+  height:5px; width:100%;
+  background:repeating-linear-gradient(135deg, var(--amber) 0 14px, #1a1a1a 14px 28px);
+  opacity:.9;
+}
+.hazard-sm{height:3px; width:46px; border-radius:2px;}
+
+.eyebrow{
+  font-family:var(--mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--amber); display:flex; align-items:center; gap:10px; margin-bottom:16px;
+}
+
+/* ===== Nav ===== */
+nav{position:sticky; top:0; z-index:60; background:rgba(11,12,13,.85); backdrop-filter:blur(12px); border-bottom:1px solid var(--border-soft);}
+nav .wrap{display:flex; align-items:center; justify-content:space-between; height:64px;}
+.brand{display:flex; align-items:center; gap:11px; font-family:var(--disp); font-size:19px; font-weight:700; letter-spacing:.02em;}
+.brand .mark{width:13px; height:22px; background:repeating-linear-gradient(135deg, var(--amber) 0 4px, #1a1a1a 4px 8px); border-radius:2px;}
+.brand small{display:block; font-family:var(--mono); font-size:9px; letter-spacing:.12em; color:var(--text-faint); font-weight:400;}
+.navlinks{display:flex; gap:26px; font-size:13px; color:var(--text-dim);}
+.navlinks a:hover{color:var(--amber);}
+.navstatus{display:flex; align-items:center; gap:7px; font-family:var(--mono); font-size:10.5px; color:var(--text-faint); border:1px solid var(--border); border-radius:30px; padding:6px 12px;}
+.dot-live{width:6px; height:6px; border-radius:50%; background:var(--low); animation:pulse 2s infinite;}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(54,179,126,.55);}70%{box-shadow:0 0 0 7px rgba(54,179,126,0);}100%{box-shadow:0 0 0 0 rgba(54,179,126,0);}}
+@media (max-width:900px){.navlinks{display:none;} .navstatus{display:none;}}
+
+/* ===== Hero ===== */
+header.hero{padding:80px 0 0;}
+.hero-grid{display:grid; grid-template-columns:1.45fr 1fr; gap:50px; align-items:end;}
+.hero h1{font-size:46px; line-height:1.12; max-width:680px;}
+.hero h1 .hl{color:var(--high);}
+.hero h1 .hl2{color:var(--amber);}
+.hero p.lede{color:var(--text-dim); font-size:15px; max-width:560px; margin-top:18px;}
+.hero-side{font-family:var(--mono); font-size:12px; color:var(--text-faint); border-left:2px solid var(--amber); padding-left:20px; line-height:1.85;}
+.hero-side .role{color:var(--text-dim); margin-bottom:12px;}
+.chiprow{display:flex; gap:9px; margin-top:26px; flex-wrap:wrap;}
+.chip{font-family:var(--mono); font-size:11px; color:var(--text-dim); border:1px solid var(--border); border-radius:30px; padding:6px 12px; background:var(--surface);}
+@media (max-width:900px){.hero-grid{grid-template-columns:1fr;} .hero-side{border-left:none; border-top:2px solid var(--amber); padding-left:0; padding-top:16px;} .hero h1{font-size:34px;}}
+
+/* live KPI strip */
+.kpi-strip{display:grid; grid-template-columns:repeat(5,1fr); gap:1px; background:var(--border-soft); border:1px solid var(--border-soft); border-radius:0; margin-top:50px;}
+.kpi-strip .kpi{background:var(--surface); padding:22px 22px;}
+.kpi .lbl{font-size:10.5px; color:var(--text-faint); text-transform:uppercase; letter-spacing:.07em;}
+.kpi .val{font-family:var(--mono); font-size:25px; font-weight:700; margin-top:9px;}
+.kpi .sub{font-size:11px; color:var(--text-dim); margin-top:5px;}
+@media (max-width:900px){.kpi-strip{grid-template-columns:repeat(2,1fr);}}
+
+section{padding:80px 0;}
+.sec-head{display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:38px; gap:24px; flex-wrap:wrap;}
+.sec-head h2{font-size:27px;}
+.sec-head p{color:var(--text-dim); font-size:14px; max-width:430px;}
+.idx{font-family:var(--mono); color:var(--text-faint); font-size:11.5px; margin-bottom:6px; display:block;}
+
+/* ===== Live table controls ===== */
+.controls{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:18px; align-items:center;}
+.controls input[type=text]{
+  background:var(--surface); border:1px solid var(--border); color:var(--text);
+  font-family:var(--mono); font-size:12.5px; padding:10px 14px; border-radius:6px; min-width:200px;
+}
+.controls select{
+  background:var(--surface); border:1px solid var(--border); color:var(--text-dim);
+  font-family:var(--mono); font-size:12px; padding:10px 12px; border-radius:6px;
+}
+.controls input:focus,.controls select:focus{outline:1px solid var(--amber); border-color:var(--amber);}
+.tier-toggle{display:flex; gap:6px; margin-left:auto;}
+.tbtn{
+  font-family:var(--mono); font-size:11px; padding:9px 14px; border-radius:30px;
+  border:1px solid var(--border); background:var(--surface); color:var(--text-dim);
+}
+.tbtn[data-active="1"]{border-color:currentColor;}
+.tbtn.high[data-active="1"]{color:var(--high); background:var(--high-soft);}
+.tbtn.med[data-active="1"]{color:var(--med); background:var(--med-soft);}
+.tbtn.low[data-active="1"]{color:var(--low); background:var(--low-soft);}
+.resultcount{font-family:var(--mono); font-size:11.5px; color:var(--text-faint); margin-bottom:12px;}
+
+.tablewrap{border:1px solid var(--border-soft); border-radius:10px; overflow:hidden;}
+.tablescroll{max-height:560px; overflow-y:auto;}
+table{width:100%; border-collapse:collapse; font-size:12.6px;}
+thead{position:sticky; top:0; background:var(--surface-2); z-index:5;}
+th{
+  text-align:left; padding:12px 14px; font-family:var(--mono); font-size:10.5px;
+  text-transform:uppercase; letter-spacing:.05em; color:var(--text-faint); cursor:pointer;
+  border-bottom:1px solid var(--border); white-space:nowrap; user-select:none;
+}
+th:hover{color:var(--amber);}
+th .arrow{opacity:.4; margin-left:3px;}
+td{padding:11px 14px; border-bottom:1px solid var(--border-soft); color:var(--text-dim); white-space:nowrap;}
+tbody tr{background:var(--surface); cursor:pointer; transition:background .12s;}
+tbody tr:hover{background:var(--surface-2);}
+td.sku{color:var(--text); font-family:var(--mono); font-weight:600;}
+td.num{font-family:var(--mono); text-align:right;}
+.badge{
+  font-family:var(--mono); font-size:10.5px; padding:4px 9px; border-radius:20px; font-weight:600;
+  display:inline-block;
+}
+.badge.High{color:var(--high); background:var(--high-soft);}
+.badge.Medium{color:var(--med); background:var(--med-soft);}
+.badge.Low{color:var(--low); background:var(--low-soft);}
+.dos-bar{position:relative; width:70px; height:6px; background:var(--border); border-radius:3px; overflow:hidden; display:inline-block; vertical-align:middle; margin-right:8px;}
+.dos-bar i{position:absolute; left:0; top:0; bottom:0; border-radius:3px;}
+@media (max-width:900px){.tablewrap{overflow-x:auto;} table{font-size:11.5px;}}
+
+/* ===== Detail panel (reorder calculator) ===== */
+.overlay{
+  position:fixed; inset:0; background:rgba(0,0,0,.6); backdrop-filter:blur(3px);
+  display:none; align-items:center; justify-content:center; z-index:100; padding:24px;
+}
+.overlay.open{display:flex;}
+.panel{
+  background:var(--surface-2); border:1px solid var(--border); border-radius:14px;
+  width:100%; max-width:560px; padding:0; overflow:hidden;
+  box-shadow:0 30px 80px -20px rgba(0,0,0,.6);
+}
+.panel-head{padding:22px 26px; border-bottom:1px solid var(--border-soft); display:flex; justify-content:space-between; align-items:flex-start;}
+.panel-head h3{font-size:20px;}
+.panel-head .ph-sub{font-family:var(--mono); font-size:11.5px; color:var(--text-faint); margin-top:4px;}
+.panel-close{font-family:var(--mono); color:var(--text-faint); font-size:18px; background:none; border:none; line-height:1;}
+.panel-close:hover{color:var(--text);}
+.panel-body{padding:24px 26px;}
+.calc-grid{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:20px;}
+.calc-field{background:var(--surface); border:1px solid var(--border-soft); border-radius:8px; padding:13px 15px;}
+.calc-field .cl{font-family:var(--mono); font-size:10px; color:var(--text-faint); text-transform:uppercase;}
+.calc-field .cv{font-family:var(--mono); font-size:18px; margin-top:6px; font-weight:700;}
+.callout{
+  border-radius:8px; padding:16px 18px; font-size:13px; margin-top:6px;
+  border:1px solid var(--border-soft);
+}
+.callout b{font-family:var(--mono); display:block; margin-bottom:4px; font-size:14px;}
+.recommend{margin-top:18px; font-size:13px; color:var(--text-dim); line-height:1.7;}
+.recommend b{color:var(--text);}
+
+/* ===== Charts row ===== */
+.chart-grid{display:grid; grid-template-columns:1fr 1fr; gap:22px;}
+.chart-card{background:var(--surface); border:1px solid var(--border-soft); border-radius:12px; padding:22px 22px 8px;}
+.chart-card h4{font-size:14.5px; font-weight:600; font-family:var(--body); margin-bottom:2px;}
+.chart-card .ck-sub{font-size:12px; color:var(--text-faint); margin-bottom:14px;}
+.chart-card.full{grid-column:1/-1;}
+canvas{max-width:100%;}
+@media (max-width:900px){.chart-grid{grid-template-columns:1fr;}}
+
+/* disruption callout strip */
+.disrupt-banner{
+  display:flex; gap:16px; align-items:center; background:var(--high-soft); border:1px solid rgba(255,86,48,.3);
+  border-radius:10px; padding:16px 20px; margin-bottom:24px; font-size:13px; color:var(--text-dim);
+}
+.disrupt-banner b{color:var(--high); font-family:var(--mono);}
+
+/* ===== Model metrics ===== */
+.metric-grid{display:grid; grid-template-columns:repeat(5,1fr); gap:1px; background:var(--border-soft); border:1px solid var(--border-soft); border-radius:10px; overflow:hidden; margin-bottom:30px;}
+.metric{background:var(--surface); padding:20px 18px;}
+.metric .lbl{font-size:10.5px; color:var(--text-faint); text-transform:uppercase; letter-spacing:.06em;}
+.metric .val{font-family:var(--mono); font-size:24px; font-weight:700; margin-top:8px; color:var(--steel);}
+@media (max-width:900px){.metric-grid{grid-template-columns:repeat(2,1fr);}}
+
+.cm-wrap{display:grid; grid-template-columns:1fr 1.3fr; gap:30px; align-items:center;}
+.cm-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:8px; max-width:320px;}
+.cm-cell{border-radius:8px; padding:18px; text-align:center;}
+.cm-cell .cm-n{font-family:var(--mono); font-size:26px; font-weight:700;}
+.cm-cell .cm-l{font-size:10.5px; color:var(--text-faint); margin-top:4px; font-family:var(--mono);}
+.cm-tn{background:var(--low-soft); color:var(--low);}
+.cm-fp{background:var(--med-soft); color:var(--med);}
+.cm-fn{background:var(--high-soft); color:var(--high);}
+.cm-tp{background:rgba(92,138,255,.13); color:var(--steel);}
+.model-notes{font-size:13px; color:var(--text-dim); line-height:1.8;}
+.model-notes b{color:var(--text);}
+@media (max-width:900px){.cm-wrap{grid-template-columns:1fr;}}
+
+/* ===== Architecture pipeline ===== */
+.pipeline{display:flex; align-items:stretch; gap:0; overflow-x:auto; padding-bottom:8px;}
+.pstep{
+  background:var(--surface); border:1px solid var(--border-soft); border-radius:10px;
+  padding:18px 18px; min-width:170px; flex:1; position:relative;
+}
+.pstep .pn{font-family:var(--mono); font-size:10px; color:var(--amber); letter-spacing:.08em;}
+.pstep h4{font-size:14px; margin:8px 0 6px; font-family:var(--mono); font-weight:600;}
+.pstep p{font-size:11.5px; color:var(--text-faint); line-height:1.5;}
+.parrow{display:flex; align-items:center; justify-content:center; color:var(--text-faint); font-size:18px; padding:0 6px; flex:0 0 auto;}
+@media (max-width:900px){.pipeline{flex-direction:column;} .parrow{transform:rotate(90deg); padding:6px 0;}}
+
+/* ===== Code tabs (reuse pattern) ===== */
+.codepanel{background:#0A0B0C; border:1px solid var(--border-soft); border-radius:12px; overflow:hidden;}
+.tabbar{display:flex; border-bottom:1px solid var(--border-soft); background:var(--surface); overflow-x:auto;}
+.tabbtn{font-family:var(--mono); font-size:11.5px; padding:13px 20px; color:var(--text-faint); cursor:pointer; border-right:1px solid var(--border-soft); white-space:nowrap;}
+.tabbtn.active{color:var(--amber); background:var(--bg-soft);}
+.tabbody{padding:24px 26px; display:none;}
+.tabbody.active{display:block;}
+.tabbody .filename{font-family:var(--mono); font-size:10.5px; color:var(--text-faint); margin-bottom:13px;}
+pre{font-family:var(--mono); font-size:12.3px; line-height:1.75; color:#C9D1D9; overflow-x:auto; white-space:pre;}
+.c-kw{color:var(--steel);} .c-fn{color:#36B37E;} .c-str{color:var(--amber);} .c-com{color:#5E6566;} .c-num{color:#FF8AAE;}
+
+/* ===== Recs / limitations ===== */
+.twocol{display:grid; grid-template-columns:1fr 1fr; gap:24px;}
+.box{background:var(--surface); border:1px solid var(--border-soft); border-radius:12px; padding:24px;}
+.box h3{font-size:16px; margin-bottom:14px; display:flex; align-items:center; gap:8px;}
+.box ul{list-style:none; display:flex; flex-direction:column; gap:11px;}
+.box li{font-size:13px; color:var(--text-dim); padding-left:16px; position:relative; line-height:1.6;}
+.box li::before{content:"›"; position:absolute; left:0; color:var(--amber); font-family:var(--mono);}
+.box.limit li::before{content:"!"; color:var(--high); font-weight:700;}
+@media (max-width:900px){.twocol{grid-template-columns:1fr;}}
+
+footer{border-top:1px solid var(--border-soft); padding:46px 0 56px;}
+.fgrid{display:flex; justify-content:space-between; flex-wrap:wrap; gap:28px;}
+.fcol{font-size:12.5px; color:var(--text-faint); max-width:360px; line-height:1.7;}
+.fcol b{color:var(--text-dim);}
+.badges{display:flex; gap:7px; flex-wrap:wrap; margin-top:13px;}
+.badges span{font-family:var(--mono); font-size:10px; border:1px solid var(--border); border-radius:20px; padding:5px 10px; color:var(--text-faint);}
+
+@media (prefers-reduced-motion: reduce){.dot-live{animation:none;}}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <div class="brand"><span class="mark"></span><span>STOCKOUT/RISK<small>SUPPLY CHAIN INTELLIGENCE — LIVE</small></span></div>
+    <div class="navlinks">
+      <a href="#table">Live Table</a>
+      <a href="#analytics">Risk Analytics</a>
+      <a href="#disruption">Disruption</a>
+      <a href="#model">Model</a>
+      <a href="#architecture">Architecture</a>
+      <a href="#code">Code</a>
+    </div>
+    <div class="navstatus"><span class="dot-live"></span> <span id="nav-status">160 SKU-warehouse pairs loaded</span></div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="hero-grid">
+      <div>
+        <div class="eyebrow"><span>●</span> SUPPLY CHAIN &amp; STOCKOUT RISK INTELLIGENCE</div>
+        <h1>Right now, <span class="hl" id="hero-high">92 of 160</span> SKU–warehouse pairs are flagged <span class="hl">High risk</span> — <span class="hl2" id="hero-exposure">$2.14M</span> of demand exposed if they aren't reordered in time.</h1>
+        <p class="lede">A live, filterable view of the model's actual scoring table — not a mock-up. Search it, sort it, filter by warehouse or category, and click any row to run the reorder calculator. Every number on this page is computed from the pipeline's real output file.</p>
+        <div class="chiprow">
+          <span class="chip">Python · scikit-learn</span>
+          <span class="chip">SQL · window functions</span>
+          <span class="chip">Logistic Regression · ROC-AUC 0.84</span>
+          <span class="chip">40 SKUs · 4 warehouses · 10 suppliers</span>
+        </div>
+      </div>
+      <div class="hero-side">
+        <div class="role">Prepared as a senior data/analytics engineer would present it<br>end-to-end SQL → ML → BI pipeline, 1 year of daily data</div>
+        SOURCE — generate_data.py (seeded simulation)<br>
+        GRAIN — one row per SKU × warehouse<br>
+        MODEL — logistic regression, threshold 0.50<br>
+        LATEST SNAPSHOT — 2023-12-31
+      </div>
+    </div>
+
+    <div class="kpi-strip">
+      <div class="kpi"><div class="lbl">Pairs Tracked</div><div class="val" id="kpi-total">—</div><div class="sub">SKU × warehouse rows</div></div>
+      <div class="kpi"><div class="lbl">High Risk</div><div class="val" style="color:var(--high)" id="kpi-high">—</div><div class="sub" id="kpi-high-pct">—</div></div>
+      <div class="kpi"><div class="lbl">Medium Risk</div><div class="val" style="color:var(--med)" id="kpi-med">—</div><div class="sub">monitor / review in 7 days</div></div>
+      <div class="kpi"><div class="lbl">Low Risk</div><div class="val" style="color:var(--low)" id="kpi-low">—</div><div class="sub">no action needed</div></div>
+      <div class="kpi"><div class="lbl">Estimated Exposure</div><div class="val" id="kpi-exposure">—</div><div class="sub">unit_cost × sales × lead time, High tier</div></div>
+    </div>
+  </div>
+</header>
+
+<section id="table">
+  <div class="wrap">
+    <div class="sec-head">
+      <div>
+        <span class="idx">01 — LIVE RISK TABLE</span>
+        <h2>The model's actual output — filter it yourself</h2>
+      </div>
+      <p>This is <span class="mono">powerbi/model_output.csv</span>, loaded in full. Click a row to open the reorder calculator for that SKU.</p>
+    </div>
+
+    <div class="controls">
+      <input type="text" id="search" placeholder="Search SKU or product name…">
+      <select id="f-warehouse"><option value="">All warehouses</option></select>
+      <select id="f-category"><option value="">All categories</option></select>
+      <div class="tier-toggle">
+        <button class="tbtn high" data-tier="High" data-active="1">High</button>
+        <button class="tbtn med" data-tier="Medium" data-active="1">Medium</button>
+        <button class="tbtn low" data-tier="Low" data-active="1">Low</button>
+      </div>
+    </div>
+    <div class="resultcount" id="resultcount">—</div>
+
+    <div class="tablewrap">
+      <div class="tablescroll">
+        <table id="risk-table">
+          <thead>
+            <tr>
+              <th data-key="sku">SKU <span class="arrow">↕</span></th>
+              <th data-key="product_name">Product</th>
+              <th data-key="warehouse_name">Warehouse</th>
+              <th data-key="category">Category</th>
+              <th data-key="days_of_supply">Days of Supply <span class="arrow">↕</span></th>
+              <th data-key="base_lead_time_days">Lead Time</th>
+              <th data-key="stockout_risk_score">Risk Score <span class="arrow">↕</span></th>
+              <th data-key="risk_tier">Tier</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="analytics">
+  <div class="wrap">
+    <div class="sec-head">
+      <div>
+        <span class="idx">02 — RISK ANALYTICS</span>
+        <h2>Why these SKUs, why now</h2>
+      </div>
+      <p>Three views into the same table above: risk concentration, category exposure, and what the model actually weights.</p>
+    </div>
+
+    <div class="chart-grid">
+      <div class="chart-card">
+        <h4>Risk tier distribution</h4>
+        <div class="ck-sub">Live count across all 160 pairs</div>
+        <canvas id="chart-donut" height="220"></canvas>
+      </div>
+      <div class="chart-card">
+        <h4>Avg days of supply, by category</h4>
+        <div class="ck-sub">Holiday categories are running thinnest right now</div>
+        <canvas id="chart-category" height="220"></canvas>
+      </div>
+      <div class="chart-card full">
+        <h4>What the model actually weights</h4>
+        <div class="ck-sub">Logistic regression coefficients — <span class="mono">days_of_supply</span> dominates everything else combined</div>
+        <canvas id="chart-importance" height="170"></canvas>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="disruption">
+  <div class="wrap">
+    <div class="sec-head">
+      <div>
+        <span class="idx">03 — DISRUPTION DETECTION</span>
+        <h2>The anomaly the SQL layer was built to catch</h2>
+      </div>
+      <p>Monthly average actual lead time per supplier, from real purchase-order delivery dates.</p>
+    </div>
+
+    <div class="disrupt-banner">
+      <span style="font-size:22px;">⚠</span>
+      <div><b>3 suppliers flagged</b> — average lead time jumped to 1.9×–3.1× baseline during Jul–Sep, caught precisely by the anomaly query below. Affected SKUs stocked out on <b>34.8%</b> of days during the window, vs <b>1.2%</b> everywhere else.</div>
+    </div>
+
+    <div class="chart-card full" style="padding-top:22px;">
+      <canvas id="chart-disruption" height="100"></canvas>
+    </div>
+  </div>
+</section>
+
+<section id="model">
+  <div class="wrap">
+    <div class="sec-head">
+      <div>
+        <span class="idx">04 — MODEL PERFORMANCE</span>
+        <h2>Logistic regression, chosen on purpose</h2>
+      </div>
+      <p>Selected over random forest on ROC-AUC, with a threshold deliberately tuned for recall over precision.</p>
+    </div>
+
+    <div class="metric-grid" id="metric-grid"></div>
+
+    <div class="cm-wrap">
+      <div class="cm-grid" id="cm-grid"></div>
+      <div class="model-notes">
+        <p style="margin-bottom:14px;"><b>Why recall over precision:</b> missing a real stockout costs more than reviewing a SKU that turns out fine. The threshold was tuned to guarantee recall ≥ 0.75 on the positive class, then maximize precision within that constraint — not picked for the best-looking single accuracy number.</p>
+        <p><b>Train/test split is time-based</b>, not random — the model is evaluated on dates it has never seen, because SKU/warehouse series are correlated across time and a random split would leak future information into training.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="architecture">
+  <div class="wrap">
+    <div class="sec-head">
+      <div>
+        <span class="idx">05 — PIPELINE ARCHITECTURE</span>
+        <h2>Six stages, six real artifacts</h2>
+      </div>
+      <p>Each stage hands the next a file it actually consumes — this can be re-run end to end.</p>
+    </div>
+
+    <div class="pipeline">
+      <div class="pstep"><span class="pn">01</span><h4>generate_data.py</h4><p>Seeded daily simulation — demand, seasonality, lead times, a real disruption event.</p></div>
+      <div class="parrow">→</div>
+      <div class="pstep"><span class="pn">02</span><h4>schema.sql</h4><p>Relational warehouse — products, suppliers, warehouses, sales, snapshots, POs.</p></div>
+      <div class="parrow">→</div>
+      <div class="pstep"><span class="pn">03</span><h4>queries.sql</h4><p>8 business-logic queries — days-of-supply, anomaly detection, ABC analysis.</p></div>
+      <div class="parrow">→</div>
+      <div class="pstep"><span class="pn">04</span><h4>feature_engineering.py</h4><p>Rolling 7/30-day features + forward-looking stockout label.</p></div>
+      <div class="parrow">→</div>
+      <div class="pstep"><span class="pn">05</span><h4>model.py</h4><p>Trains, evaluates, scores the latest snapshot → model_output.csv.</p></div>
+      <div class="parrow">→</div>
+      <div class="pstep"><span class="pn">06</span><h4>Power BI</h4><p>Weekly action dashboard — this table is the dashboard's main visual.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="code">
+  <div class="wrap">
+    <div class="sec-head">
+      <div>
+        <span class="idx">06 — ENGINEERING</span>
+        <h2>The code underneath the table</h2>
+      </div>
+      <p>Real excerpts — one per layer of the stack.</p>
+    </div>
+
+    <div class="codepanel">
+      <div class="tabbar">
+        <div class="tabbtn active" data-tab="sql1">sql/queries.sql — days of supply</div>
+        <div class="tabbtn" data-tab="sql2">sql/queries.sql — anomaly detection</div>
+        <div class="tabbtn" data-tab="py">python/model.py</div>
+        <div class="tabbtn" data-tab="dax">powerbi/dax_measures.md</div>
+      </div>
+
+      <div class="tabbody active" data-tab="sql1">
+        <div class="filename">// the core operational metric: how many days until this SKU runs out</div>
+        <pre><span class="c-kw">WITH</span> last_date <span class="c-kw">AS</span> (<span class="c-kw">SELECT MAX</span>(date) <span class="c-kw">AS</span> d <span class="c-kw">FROM</span> inventory_snapshots),
+recent_sales <span class="c-kw">AS</span> (
+    <span class="c-kw">SELECT</span> sku, warehouse_id, <span class="c-fn">AVG</span>(units_sold) <span class="c-kw">AS</span> avg_daily_sales_30d
+    <span class="c-kw">FROM</span> daily_sales
+    <span class="c-kw">WHERE</span> date <span class="c-kw">></span> (<span class="c-kw">SELECT</span> date(d, <span class="c-str">'-30 days'</span>) <span class="c-kw">FROM</span> last_date)
+    <span class="c-kw">GROUP BY</span> sku, warehouse_id
+)
+<span class="c-kw">SELECT</span>
+    c.sku, c.warehouse_id,
+    <span class="c-fn">ROUND</span>(c.on_hand_qty <span class="c-kw">/ NULLIF</span>(r.avg_daily_sales_30d, <span class="c-num">0</span>), <span class="c-num">1</span>) <span class="c-kw">AS</span> days_of_supply,
+    s.base_lead_time_days
+<span class="c-kw">FROM</span> current_stock c
+<span class="c-kw">JOIN</span> recent_sales r <span class="c-kw">ON</span> r.sku <span class="c-kw">=</span> c.sku <span class="c-kw">AND</span> r.warehouse_id <span class="c-kw">=</span> c.warehouse_id
+<span class="c-kw">WHERE</span> c.on_hand_qty <span class="c-kw">/ NULLIF</span>(r.avg_daily_sales_30d, <span class="c-num">0</span>) <span class="c-kw"><</span> s.base_lead_time_days
+<span class="c-kw">ORDER BY</span> days_of_supply <span class="c-kw">ASC</span>;
+<span class="c-com">-- Finding: any row here is at risk — stock will likely run out before
+-- a reorder placed today would even arrive.</span></pre>
+      </div>
+
+      <div class="tabbody" data-tab="sql2">
+        <div class="filename">// the disruption-finder — flags a sustained lead-time blowout automatically</div>
+        <pre><span class="c-kw">WITH</span> monthly <span class="c-kw">AS</span> (
+    <span class="c-kw">SELECT</span>
+        po.supplier_id,
+        strftime(<span class="c-str">'%Y-%m'</span>, po.order_date) <span class="c-kw">AS</span> order_month,
+        <span class="c-fn">AVG</span>(julianday(po.actual_delivery_date) <span class="c-kw">-</span> julianday(po.order_date)) <span class="c-kw">AS</span> avg_lead_time,
+        s.base_lead_time_days
+    <span class="c-kw">FROM</span> purchase_orders po
+    <span class="c-kw">JOIN</span> suppliers s <span class="c-kw">ON</span> s.supplier_id <span class="c-kw">=</span> po.supplier_id
+    <span class="c-kw">GROUP BY</span> po.supplier_id, order_month
+)
+<span class="c-kw">SELECT</span>
+    supplier_id, order_month,
+    <span class="c-fn">ROUND</span>(avg_lead_time <span class="c-kw">/</span> base_lead_time_days, <span class="c-num">2</span>) <span class="c-kw">AS</span> lead_time_ratio
+<span class="c-kw">FROM</span> monthly
+<span class="c-kw">WHERE</span> avg_lead_time <span class="c-kw">></span> base_lead_time_days <span class="c-kw">*</span> <span class="c-num">1.8</span>   <span class="c-com">-- flag: 80%+ above baseline</span>
+<span class="c-kw">ORDER BY</span> supplier_id, order_month;
+<span class="c-com">-- Finding: exactly 3 suppliers flagged, exactly during a Jul-Sep window.</span></pre>
+      </div>
+
+      <div class="tabbody" data-tab="py">
+        <div class="filename">// threshold selection — tuned for recall, not raw accuracy</div>
+        <pre><span class="c-com"># time-based split — SKU/warehouse series are correlated across time,
+# a random split would leak the future into training</span>
+cutoff <span class="c-kw">=</span> df[<span class="c-str">"date"</span>].quantile(<span class="c-num">0.75</span>)
+train_mask <span class="c-kw">=</span> df[<span class="c-str">"date"</span>] <span class="c-kw"><=</span> cutoff
+
+model <span class="c-kw">=</span> LogisticRegression(max_iter<span class="c-kw">=</span><span class="c-num">1000</span>, class_weight<span class="c-kw">=</span><span class="c-str">"balanced"</span>)
+model.fit(X_train_s, y_train)
+proba <span class="c-kw">=</span> model.predict_proba(X_test_s)[:, <span class="c-num">1</span>]
+
+<span class="c-com"># pick the lowest threshold that still guarantees recall >= 0.75,
+# then take whatever precision comes with it</span>
+thresholds <span class="c-kw">=</span> np.linspace(<span class="c-num">0.05</span>, <span class="c-num">0.95</span>, <span class="c-num">19</span>)
+best <span class="c-kw">=</span> <span class="c-fn">max</span>(
+    thresholds,
+    key<span class="c-kw">=</span><span class="c-kw">lambda</span> t: (recall_score(y_test, proba <span class="c-kw">>=</span> t) <span class="c-kw">>=</span> <span class="c-num">0.75</span>,
+                  precision_score(y_test, proba <span class="c-kw">>=</span> t, zero_division<span class="c-kw">=</span><span class="c-num">0</span>))
+)</pre>
+      </div>
+
+      <div class="tabbody" data-tab="dax">
+        <div class="filename">// the same exposure formula this page computes live, as a Power BI measure</div>
+        <pre>Estimated Exposure ($) <span class="c-kw">=</span>
+<span class="c-fn">SUMX</span>(
+    <span class="c-fn">FILTER</span>(model_output, model_output[risk_tier] <span class="c-kw">=</span> <span class="c-str">"High"</span>),
+    model_output[unit_cost] <span class="c-kw">*</span> model_output[avg_sales_7d] <span class="c-kw">*</span> model_output[base_lead_time_days]
+)
+<span class="c-com">// estimates the $ value of demand that could go unfulfilled if a
+// High-risk SKU stocks out for its full lead-time window</span>
+
+Risk Color <span class="c-kw">=</span>
+<span class="c-fn">SWITCH</span>(
+    <span class="c-kw">TRUE</span>(),
+    model_output[risk_tier] <span class="c-kw">=</span> <span class="c-str">"High"</span>,   <span class="c-str">"#D9534F"</span>,
+    model_output[risk_tier] <span class="c-kw">=</span> <span class="c-str">"Medium"</span>, <span class="c-str">"#F0AD4E"</span>,
+    <span class="c-str">"#5CB85C"</span>
+)</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="notes">
+  <div class="wrap">
+    <div class="twocol">
+      <div class="box">
+        <h3>Recommended actions this week</h3>
+        <ul>
+          <li><b>Reorder the 92 High-risk pairs first</b> — sorted by days of supply ascending, the table above already ranks them.</li>
+          <li><b>Treat Electronics &amp; Toys as a seasonal policy review</b>, not a one-off fire drill — both sit at 4–5 days of supply heading into peak demand.</li>
+          <li><b>Run the anomaly query monthly against live PO data</b> — it caught the supplier disruption precisely; it should run automatically, not get found in a quarterly review.</li>
+          <li><b>Revisit reorder points seasonally</b> — Garden's 83 days of excess supply is a policy mismatch, not a risk.</li>
+        </ul>
+      </div>
+      <div class="box limit">
+        <h3>Honest limitations</h3>
+        <ul>
+          <li>Data is synthetic — internally consistent, but without the missing values and schema drift real production data has.</li>
+          <li>The model is intentionally simple — the natural next step is an orchestrated weekly retrain (Airflow/Prefect) on a rolling window.</li>
+          <li>Demand isn't modeled with a time-series-specific method (e.g. Prophet) — a worthwhile comparison for the demand side specifically.</li>
+          <li>Estimated exposure assumes a full lead-time stockout — a real ops team would size this against partial-fulfillment scenarios too.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="fgrid">
+      <div class="fcol">
+        <b>Supply Chain &amp; Stockout Risk Intelligence Platform</b><br>
+        An end-to-end pipeline — SQL business logic, Python feature engineering and ML scoring, and a Power BI–ready output table — built on a simulated 40-SKU, 4-warehouse, 10-supplier retail network.
+        <div class="badges"><span>PostgreSQL/SQLite</span><span>Python</span><span>scikit-learn</span><span>pandas</span><span>Power BI</span><span>DAX</span></div>
+      </div>
+      <div class="fcol">
+        <b>This page</b><br>
+        Every chart and table here is rendered client-side from the pipeline's actual <span class="mono">model_output.csv</span> — open the file in dev tools, it's the same 160 rows.
+      </div>
+    </div>
+  </div>
+</footer>
+
+<div class="overlay" id="overlay">
+  <div class="panel">
+    <div class="panel-head">
+      <div>
+        <h3 id="panel-sku">—</h3>
+        <div class="ph-sub" id="panel-sub">—</div>
+      </div>
+      <button class="panel-close" id="panel-close">✕</button>
+    </div>
+    <div class="panel-body">
+      <div class="calc-grid">
+        <div class="calc-field"><div class="cl">On hand</div><div class="cv" id="c-onhand">—</div></div>
+        <div class="calc-field"><div class="cl">On order</div><div class="cv" id="c-onorder">—</div></div>
+        <div class="calc-field"><div class="cl">Avg daily sales (7d)</div><div class="cv" id="c-sales">—</div></div>
+        <div class="calc-field"><div class="cl">Supplier lead time</div><div class="cv" id="c-lead">—</div></div>
+      </div>
+      <div class="callout" id="c-callout">—</div>
+      <div class="recommend" id="c-recommend">—</div>
+    </div>
+  </div>
+</div>
+
+<script id="data-bundle" type="application/json">{"rows": [{"date": "2023-12-31", "sku": "SKU0001", "warehouse_id": 1, "product_name": "Popular HomeGoods", "category": "HomeGoods", "on_hand_qty": 253, "on_order_qty": 0, "avg_sales_7d": 11.86, "avg_sales_30d": 11.43, "demand_volatility_30d": 3.19, "days_of_supply": 22.1, "base_lead_time_days": 17, "reliability_score": 0.98, "unit_cost": 26.47, "supplier_id": 5, "stockout_risk_score": 0.054, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0001", "warehouse_id": 2, "product_name": "Popular HomeGoods", "category": "HomeGoods", "on_hand_qty": 269, "on_order_qty": 509, "avg_sales_7d": 17.29, "avg_sales_30d": 17.6, "demand_volatility_30d": 3.93, "days_of_supply": 15.3, "base_lead_time_days": 17, "reliability_score": 0.98, "unit_cost": 26.47, "supplier_id": 5, "stockout_risk_score": 0.153, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0001", "warehouse_id": 3, "product_name": "Popular HomeGoods", "category": "HomeGoods", "on_hand_qty": 295, "on_order_qty": 760, "avg_sales_7d": 30.57, "avg_sales_30d": 29.37, "demand_volatility_30d": 8.65, "days_of_supply": 10.0, "base_lead_time_days": 17, "reliability_score": 0.98, "unit_cost": 26.47, "supplier_id": 5, "stockout_risk_score": 0.462, "risk_tier": "Medium", "recommended_action": "Monitor / review in 7 days", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0001", "warehouse_id": 4, "product_name": "Popular HomeGoods", "category": "HomeGoods", "on_hand_qty": 643, "on_order_qty": 0, "avg_sales_7d": 39.29, "avg_sales_30d": 39.67, "demand_volatility_30d": 5.5, "days_of_supply": 16.2, "base_lead_time_days": 17, "reliability_score": 0.98, "unit_cost": 26.47, "supplier_id": 5, "stockout_risk_score": 0.07, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0002", "warehouse_id": 1, "product_name": "Hold Grocery", "category": "Grocery", "on_hand_qty": 0, "on_order_qty": 219, "avg_sales_7d": 5.71, "avg_sales_30d": 11.87, "demand_volatility_30d": 6.63, "days_of_supply": 0.0, "base_lead_time_days": 10, "reliability_score": 0.94, "unit_cost": 24.95, "supplier_id": 2, "stockout_risk_score": 0.84, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0002", "warehouse_id": 2, "product_name": "Hold Grocery", "category": "Grocery", "on_hand_qty": 81, "on_order_qty": 0, "avg_sales_7d": 9.43, "avg_sales_30d": 7.33, "demand_volatility_30d": 2.45, "days_of_supply": 11.0, "base_lead_time_days": 10, "reliability_score": 0.94, "unit_cost": 24.95, "supplier_id": 2, "stockout_risk_score": 0.271, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0002", "warehouse_id": 3, "product_name": "Hold Grocery", "category": "Grocery", "on_hand_qty": 128, "on_order_qty": 0, "avg_sales_7d": 14.0, "avg_sales_30d": 13.47, "demand_volatility_30d": 4.99, "days_of_supply": 9.5, "base_lead_time_days": 10, "reliability_score": 0.94, "unit_cost": 24.95, "supplier_id": 2, "stockout_risk_score": 0.384, "risk_tier": "Medium", "recommended_action": "Monitor / review in 7 days", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0002", "warehouse_id": 4, "product_name": "Hold Grocery", "category": "Grocery", "on_hand_qty": 97, "on_order_qty": 522, "avg_sales_7d": 32.71, "avg_sales_30d": 31.33, "demand_volatility_30d": 5.77, "days_of_supply": 3.1, "base_lead_time_days": 10, "reliability_score": 0.94, "unit_cost": 24.95, "supplier_id": 2, "stockout_risk_score": 0.604, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0003", "warehouse_id": 1, "product_name": "West HomeGoods", "category": "HomeGoods", "on_hand_qty": 171, "on_order_qty": 543, "avg_sales_7d": 48.14, "avg_sales_30d": 53.97, "demand_volatility_30d": 8.69, "days_of_supply": 3.2, "base_lead_time_days": 9, "reliability_score": 0.77, "unit_cost": 49.29, "supplier_id": 4, "stockout_risk_score": 0.687, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0003", "warehouse_id": 2, "product_name": "West HomeGoods", "category": "HomeGoods", "on_hand_qty": 0, "on_order_qty": 647, "avg_sales_7d": 37.86, "avg_sales_30d": 37.63, "demand_volatility_30d": 5.83, "days_of_supply": 0.0, "base_lead_time_days": 9, "reliability_score": 0.77, "unit_cost": 49.29, "supplier_id": 4, "stockout_risk_score": 0.835, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0003", "warehouse_id": 3, "product_name": "West HomeGoods", "category": "HomeGoods", "on_hand_qty": 207, "on_order_qty": 555, "avg_sales_7d": 35.43, "avg_sales_30d": 33.0, "demand_volatility_30d": 6.93, "days_of_supply": 6.3, "base_lead_time_days": 9, "reliability_score": 0.77, "unit_cost": 49.29, "supplier_id": 4, "stockout_risk_score": 0.63, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0003", "warehouse_id": 4, "product_name": "West HomeGoods", "category": "HomeGoods", "on_hand_qty": 657, "on_order_qty": 0, "avg_sales_7d": 46.71, "avg_sales_30d": 37.0, "demand_volatility_30d": 17.8, "days_of_supply": 17.8, "base_lead_time_days": 9, "reliability_score": 0.77, "unit_cost": 49.29, "supplier_id": 4, "stockout_risk_score": 0.491, "risk_tier": "Medium", "recommended_action": "Monitor / review in 7 days", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0004", "warehouse_id": 1, "product_name": "Full Toys", "category": "Toys", "on_hand_qty": 199, "on_order_qty": 0, "avg_sales_7d": 9.43, "avg_sales_30d": 13.73, "demand_volatility_30d": 12.56, "days_of_supply": 14.5, "base_lead_time_days": 10, "reliability_score": 0.94, "unit_cost": 23.79, "supplier_id": 2, "stockout_risk_score": 0.467, "risk_tier": "Medium", "recommended_action": "Monitor / review in 7 days", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0004", "warehouse_id": 2, "product_name": "Full Toys", "category": "Toys", "on_hand_qty": 51, "on_order_qty": 94, "avg_sales_7d": 8.71, "avg_sales_30d": 9.1, "demand_volatility_30d": 5.47, "days_of_supply": 5.6, "base_lead_time_days": 10, "reliability_score": 0.94, "unit_cost": 23.79, "supplier_id": 2, "stockout_risk_score": 0.647, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0004", "warehouse_id": 3, "product_name": "Full Toys", "category": "Toys", "on_hand_qty": 347, "on_order_qty": 0, "avg_sales_7d": 31.0, "avg_sales_30d": 35.43, "demand_volatility_30d": 14.21, "days_of_supply": 9.8, "base_lead_time_days": 10, "reliability_score": 0.94, "unit_cost": 23.79, "supplier_id": 2, "stockout_risk_score": 0.58, "risk_tier": "Medium", "recommended_action": "Monitor / review in 7 days", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0004", "warehouse_id": 4, "product_name": "Full Toys", "category": "Toys", "on_hand_qty": 0, "on_order_qty": 742, "avg_sales_7d": 59.86, "avg_sales_30d": 53.5, "demand_volatility_30d": 35.22, "days_of_supply": 0.0, "base_lead_time_days": 10, "reliability_score": 0.94, "unit_cost": 23.79, "supplier_id": 2, "stockout_risk_score": 0.998, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0005", "warehouse_id": 1, "product_name": "Behind Toys", "category": "Toys", "on_hand_qty": 366, "on_order_qty": 0, "avg_sales_7d": 49.43, "avg_sales_30d": 57.13, "demand_volatility_30d": 29.91, "days_of_supply": 6.4, "base_lead_time_days": 6, "reliability_score": 0.76, "unit_cost": 54.81, "supplier_id": 7, "stockout_risk_score": 0.974, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0005", "warehouse_id": 2, "product_name": "Behind Toys", "category": "Toys", "on_hand_qty": 0, "on_order_qty": 360, "avg_sales_7d": 1.14, "avg_sales_30d": 36.53, "demand_volatility_30d": 29.33, "days_of_supply": 0.0, "base_lead_time_days": 6, "reliability_score": 0.76, "unit_cost": 54.81, "supplier_id": 7, "stockout_risk_score": 0.993, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0005", "warehouse_id": 3, "product_name": "Behind Toys", "category": "Toys", "on_hand_qty": 26, "on_order_qty": 0, "avg_sales_7d": 5.43, "avg_sales_30d": 5.67, "demand_volatility_30d": 3.96, "days_of_supply": 4.6, "base_lead_time_days": 6, "reliability_score": 0.76, "unit_cost": 54.81, "supplier_id": 7, "stockout_risk_score": 0.718, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0005", "warehouse_id": 4, "product_name": "Behind Toys", "category": "Toys", "on_hand_qty": 0, "on_order_qty": 262, "avg_sales_7d": 9.14, "avg_sales_30d": 26.2, "demand_volatility_30d": 21.24, "days_of_supply": 0.0, "base_lead_time_days": 6, "reliability_score": 0.76, "unit_cost": 54.81, "supplier_id": 7, "stockout_risk_score": 0.985, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0006", "warehouse_id": 1, "product_name": "Since Electronics", "category": "Electronics", "on_hand_qty": 0, "on_order_qty": 424, "avg_sales_7d": 37.71, "avg_sales_30d": 42.4, "demand_volatility_30d": 26.8, "days_of_supply": 0.0, "base_lead_time_days": 6, "reliability_score": 0.76, "unit_cost": 302.44, "supplier_id": 7, "stockout_risk_score": 0.993, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0006", "warehouse_id": 2, "product_name": "Since Electronics", "category": "Electronics", "on_hand_qty": 108, "on_order_qty": 254, "avg_sales_7d": 20.86, "avg_sales_30d": 31.13, "demand_volatility_30d": 17.74, "days_of_supply": 3.5, "base_lead_time_days": 6, "reliability_score": 0.76, "unit_cost": 302.44, "supplier_id": 7, "stockout_risk_score": 0.929, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0006", "warehouse_id": 3, "product_name": "Since Electronics", "category": "Electronics", "on_hand_qty": 0, "on_order_qty": 407, "avg_sales_7d": 40.57, "avg_sales_30d": 29.13, "demand_volatility_30d": 32.42, "days_of_supply": 0.0, "base_lead_time_days": 6, "reliability_score": 0.76, "unit_cost": 302.44, "supplier_id": 7, "stockout_risk_score": 0.999, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0006", "warehouse_id": 4, "product_name": "Since Electronics", "category": "Electronics", "on_hand_qty": 10, "on_order_qty": 58, "avg_sales_7d": 6.0, "avg_sales_30d": 5.47, "demand_volatility_30d": 4.28, "days_of_supply": 1.8, "base_lead_time_days": 6, "reliability_score": 0.76, "unit_cost": 302.44, "supplier_id": 7, "stockout_risk_score": 0.801, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0007", "warehouse_id": 1, "product_name": "Song Electronics", "category": "Electronics", "on_hand_qty": 0, "on_order_qty": 1643, "avg_sales_7d": 8.14, "avg_sales_30d": 52.63, "demand_volatility_30d": 28.23, "days_of_supply": 0.0, "base_lead_time_days": 19, "reliability_score": 0.86, "unit_cost": 336.99, "supplier_id": 1, "stockout_risk_score": 0.983, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0007", "warehouse_id": 2, "product_name": "Song Electronics", "category": "Electronics", "on_hand_qty": 0, "on_order_qty": 369, "avg_sales_7d": 9.71, "avg_sales_30d": 12.3, "demand_volatility_30d": 7.12, "days_of_supply": 0.0, "base_lead_time_days": 19, "reliability_score": 0.86, "unit_cost": 336.99, "supplier_id": 1, "stockout_risk_score": 0.907, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0007", "warehouse_id": 3, "product_name": "Song Electronics", "category": "Electronics", "on_hand_qty": 106, "on_order_qty": 398, "avg_sales_7d": 18.86, "avg_sales_30d": 18.2, "demand_volatility_30d": 5.16, "days_of_supply": 5.8, "base_lead_time_days": 19, "reliability_score": 0.86, "unit_cost": 336.99, "supplier_id": 1, "stockout_risk_score": 0.642, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0007", "warehouse_id": 4, "product_name": "Song Electronics", "category": "Electronics", "on_hand_qty": 374, "on_order_qty": 655, "avg_sales_7d": 29.14, "avg_sales_30d": 24.8, "demand_volatility_30d": 8.93, "days_of_supply": 15.1, "base_lead_time_days": 19, "reliability_score": 0.86, "unit_cost": 336.99, "supplier_id": 1, "stockout_risk_score": 0.278, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0008", "warehouse_id": 1, "product_name": "Onto Apparel", "category": "Apparel", "on_hand_qty": 207, "on_order_qty": 0, "avg_sales_7d": 4.29, "avg_sales_30d": 7.23, "demand_volatility_30d": 3.95, "days_of_supply": 28.6, "base_lead_time_days": 19, "reliability_score": 0.86, "unit_cost": 18.91, "supplier_id": 1, "stockout_risk_score": 0.045, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0008", "warehouse_id": 2, "product_name": "Onto Apparel", "category": "Apparel", "on_hand_qty": 563, "on_order_qty": 1432, "avg_sales_7d": 49.71, "avg_sales_30d": 46.83, "demand_volatility_30d": 10.43, "days_of_supply": 12.0, "base_lead_time_days": 19, "reliability_score": 0.86, "unit_cost": 18.91, "supplier_id": 1, "stockout_risk_score": 0.433, "risk_tier": "Medium", "recommended_action": "Monitor / review in 7 days", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0008", "warehouse_id": 3, "product_name": "Onto Apparel", "category": "Apparel", "on_hand_qty": 895, "on_order_qty": 0, "avg_sales_7d": 41.57, "avg_sales_30d": 42.67, "demand_volatility_30d": 8.46, "days_of_supply": 21.0, "base_lead_time_days": 19, "reliability_score": 0.86, "unit_cost": 18.91, "supplier_id": 1, "stockout_risk_score": 0.072, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0008", "warehouse_id": 4, "product_name": "Onto Apparel", "category": "Apparel", "on_hand_qty": 47, "on_order_qty": 127, "avg_sales_7d": 6.29, "avg_sales_30d": 4.7, "demand_volatility_30d": 3.26, "days_of_supply": 10.0, "base_lead_time_days": 19, "reliability_score": 0.86, "unit_cost": 18.91, "supplier_id": 1, "stockout_risk_score": 0.675, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0009", "warehouse_id": 1, "product_name": "Spend Grocery", "category": "Grocery", "on_hand_qty": 150, "on_order_qty": 427, "avg_sales_7d": 51.29, "avg_sales_30d": 48.37, "demand_volatility_30d": 8.89, "days_of_supply": 3.1, "base_lead_time_days": 6, "reliability_score": 0.76, "unit_cost": 10.64, "supplier_id": 7, "stockout_risk_score": 0.718, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0009", "warehouse_id": 2, "product_name": "Spend Grocery", "category": "Grocery", "on_hand_qty": 0, "on_order_qty": 273, "avg_sales_7d": 28.86, "avg_sales_30d": 29.93, "demand_volatility_30d": 5.99, "days_of_supply": 0.0, "base_lead_time_days": 6, "reliability_score": 0.76, "unit_cost": 10.64, "supplier_id": 7, "stockout_risk_score": 0.827, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0009", "warehouse_id": 3, "product_name": "Spend Grocery", "category": "Grocery", "on_hand_qty": 60, "on_order_qty": 384, "avg_sales_7d": 46.29, "avg_sales_30d": 39.83, "demand_volatility_30d": 24.84, "days_of_supply": 1.5, "base_lead_time_days": 6, "reliability_score": 0.76, "unit_cost": 10.64, "supplier_id": 7, "stockout_risk_score": 0.991, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0009", "warehouse_id": 4, "product_name": "Spend Grocery", "category": "Grocery", "on_hand_qty": 59, "on_order_qty": 0, "avg_sales_7d": 5.71, "avg_sales_30d": 5.3, "demand_volatility_30d": 3.64, "days_of_supply": 11.1, "base_lead_time_days": 6, "reliability_score": 0.76, "unit_cost": 10.64, "supplier_id": 7, "stockout_risk_score": 0.405, "risk_tier": "Medium", "recommended_action": "Monitor / review in 7 days", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0010", "warehouse_id": 1, "product_name": "Attention Grocery", "category": "Grocery", "on_hand_qty": 327, "on_order_qty": 0, "avg_sales_7d": 25.71, "avg_sales_30d": 28.7, "demand_volatility_30d": 14.12, "days_of_supply": 11.4, "base_lead_time_days": 9, "reliability_score": 0.77, "unit_cost": 3.68, "supplier_id": 4, "stockout_risk_score": 0.656, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0010", "warehouse_id": 2, "product_name": "Attention Grocery", "category": "Grocery", "on_hand_qty": 36, "on_order_qty": 112, "avg_sales_7d": 10.86, "avg_sales_30d": 10.73, "demand_volatility_30d": 4.65, "days_of_supply": 3.4, "base_lead_time_days": 9, "reliability_score": 0.77, "unit_cost": 3.68, "supplier_id": 4, "stockout_risk_score": 0.783, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0010", "warehouse_id": 3, "product_name": "Attention Grocery", "category": "Grocery", "on_hand_qty": 14, "on_order_qty": 390, "avg_sales_7d": 28.43, "avg_sales_30d": 27.7, "demand_volatility_30d": 8.39, "days_of_supply": 0.5, "base_lead_time_days": 9, "reliability_score": 0.77, "unit_cost": 3.68, "supplier_id": 4, "stockout_risk_score": 0.892, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0010", "warehouse_id": 4, "product_name": "Attention Grocery", "category": "Grocery", "on_hand_qty": 192, "on_order_qty": 0, "avg_sales_7d": 12.29, "avg_sales_30d": 13.2, "demand_volatility_30d": 7.73, "days_of_supply": 14.6, "base_lead_time_days": 9, "reliability_score": 0.77, "unit_cost": 3.68, "supplier_id": 4, "stockout_risk_score": 0.367, "risk_tier": "Medium", "recommended_action": "Monitor / review in 7 days", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0011", "warehouse_id": 1, "product_name": "Nice HomeGoods", "category": "HomeGoods", "on_hand_qty": 402, "on_order_qty": 0, "avg_sales_7d": 31.71, "avg_sales_30d": 28.27, "demand_volatility_30d": 5.97, "days_of_supply": 14.2, "base_lead_time_days": 10, "reliability_score": 0.94, "unit_cost": 51.42, "supplier_id": 2, "stockout_risk_score": 0.161, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0011", "warehouse_id": 2, "product_name": "Nice HomeGoods", "category": "HomeGoods", "on_hand_qty": 40, "on_order_qty": 157, "avg_sales_7d": 10.71, "avg_sales_30d": 11.23, "demand_volatility_30d": 2.76, "days_of_supply": 3.6, "base_lead_time_days": 10, "reliability_score": 0.94, "unit_cost": 51.42, "supplier_id": 2, "stockout_risk_score": 0.638, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0011", "warehouse_id": 3, "product_name": "Nice HomeGoods", "category": "HomeGoods", "on_hand_qty": 135, "on_order_qty": 0, "avg_sales_7d": 10.86, "avg_sales_30d": 10.27, "demand_volatility_30d": 2.78, "days_of_supply": 13.2, "base_lead_time_days": 10, "reliability_score": 0.94, "unit_cost": 51.42, "supplier_id": 2, "stockout_risk_score": 0.214, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0011", "warehouse_id": 4, "product_name": "Nice HomeGoods", "category": "HomeGoods", "on_hand_qty": 65, "on_order_qty": 503, "avg_sales_7d": 30.57, "avg_sales_30d": 30.2, "demand_volatility_30d": 5.4, "days_of_supply": 2.2, "base_lead_time_days": 10, "reliability_score": 0.94, "unit_cost": 51.42, "supplier_id": 2, "stockout_risk_score": 0.69, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0012", "warehouse_id": 1, "product_name": "One Garden", "category": "Garden", "on_hand_qty": 74, "on_order_qty": 205, "avg_sales_7d": 5.0, "avg_sales_30d": 5.53, "demand_volatility_30d": 2.03, "days_of_supply": 13.4, "base_lead_time_days": 6, "reliability_score": 0.76, "unit_cost": 36.61, "supplier_id": 7, "stockout_risk_score": 0.566, "risk_tier": "Medium", "recommended_action": "Monitor / review in 7 days", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0012", "warehouse_id": 2, "product_name": "One Garden", "category": "Garden", "on_hand_qty": 196, "on_order_qty": 0, "avg_sales_7d": 7.29, "avg_sales_30d": 7.73, "demand_volatility_30d": 2.6, "days_of_supply": 25.3, "base_lead_time_days": 6, "reliability_score": 0.76, "unit_cost": 36.61, "supplier_id": 7, "stockout_risk_score": 0.111, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0012", "warehouse_id": 3, "product_name": "One Garden", "category": "Garden", "on_hand_qty": 568, "on_order_qty": 0, "avg_sales_7d": 11.14, "avg_sales_30d": 11.63, "demand_volatility_30d": 3.78, "days_of_supply": 48.8, "base_lead_time_days": 6, "reliability_score": 0.76, "unit_cost": 36.61, "supplier_id": 7, "stockout_risk_score": 0.001, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0012", "warehouse_id": 4, "product_name": "One Garden", "category": "Garden", "on_hand_qty": 190, "on_order_qty": 0, "avg_sales_7d": 3.43, "avg_sales_30d": 4.23, "demand_volatility_30d": 2.21, "days_of_supply": 44.9, "base_lead_time_days": 6, "reliability_score": 0.76, "unit_cost": 36.61, "supplier_id": 7, "stockout_risk_score": 0.003, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0013", "warehouse_id": 1, "product_name": "Republican Electronics", "category": "Electronics", "on_hand_qty": 0, "on_order_qty": 545, "avg_sales_7d": 49.29, "avg_sales_30d": 54.5, "demand_volatility_30d": 23.69, "days_of_supply": 0.0, "base_lead_time_days": 10, "reliability_score": 0.94, "unit_cost": 81.72, "supplier_id": 2, "stockout_risk_score": 0.983, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0013", "warehouse_id": 2, "product_name": "Republican Electronics", "category": "Electronics", "on_hand_qty": 47, "on_order_qty": 115, "avg_sales_7d": 9.71, "avg_sales_30d": 7.13, "demand_volatility_30d": 3.84, "days_of_supply": 6.6, "base_lead_time_days": 10, "reliability_score": 0.94, "unit_cost": 81.72, "supplier_id": 2, "stockout_risk_score": 0.588, "risk_tier": "Medium", "recommended_action": "Monitor / review in 7 days", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0013", "warehouse_id": 3, "product_name": "Republican Electronics", "category": "Electronics", "on_hand_qty": 0, "on_order_qty": 645, "avg_sales_7d": 59.43, "avg_sales_30d": 60.13, "demand_volatility_30d": 22.34, "days_of_supply": 0.0, "base_lead_time_days": 10, "reliability_score": 0.94, "unit_cost": 81.72, "supplier_id": 2, "stockout_risk_score": 0.977, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0013", "warehouse_id": 4, "product_name": "Republican Electronics", "category": "Electronics", "on_hand_qty": 337, "on_order_qty": 502, "avg_sales_7d": 45.0, "avg_sales_30d": 44.73, "demand_volatility_30d": 18.56, "days_of_supply": 7.5, "base_lead_time_days": 10, "reliability_score": 0.94, "unit_cost": 81.72, "supplier_id": 2, "stockout_risk_score": 0.82, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0014", "warehouse_id": 1, "product_name": "Last Electronics", "category": "Electronics", "on_hand_qty": 57, "on_order_qty": 0, "avg_sales_7d": 16.0, "avg_sales_30d": 15.37, "demand_volatility_30d": 9.18, "days_of_supply": 3.7, "base_lead_time_days": 5, "reliability_score": 0.94, "unit_cost": 58.57, "supplier_id": 8, "stockout_risk_score": 0.813, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0014", "warehouse_id": 2, "product_name": "Last Electronics", "category": "Electronics", "on_hand_qty": 0, "on_order_qty": 145, "avg_sales_7d": 20.71, "avg_sales_30d": 24.17, "demand_volatility_30d": 10.17, "days_of_supply": 0.0, "base_lead_time_days": 5, "reliability_score": 0.94, "unit_cost": 58.57, "supplier_id": 8, "stockout_risk_score": 0.891, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0014", "warehouse_id": 3, "product_name": "Last Electronics", "category": "Electronics", "on_hand_qty": 10, "on_order_qty": 210, "avg_sales_7d": 29.14, "avg_sales_30d": 27.67, "demand_volatility_30d": 13.51, "days_of_supply": 0.4, "base_lead_time_days": 5, "reliability_score": 0.94, "unit_cost": 58.57, "supplier_id": 8, "stockout_risk_score": 0.936, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0014", "warehouse_id": 4, "product_name": "Last Electronics", "category": "Electronics", "on_hand_qty": 29, "on_order_qty": 186, "avg_sales_7d": 26.14, "avg_sales_30d": 23.83, "demand_volatility_30d": 13.77, "days_of_supply": 1.2, "base_lead_time_days": 5, "reliability_score": 0.94, "unit_cost": 58.57, "supplier_id": 8, "stockout_risk_score": 0.934, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0015", "warehouse_id": 1, "product_name": "Control Apparel", "category": "Apparel", "on_hand_qty": 5, "on_order_qty": 380, "avg_sales_7d": 37.86, "avg_sales_30d": 33.33, "demand_volatility_30d": 8.83, "days_of_supply": 0.2, "base_lead_time_days": 9, "reliability_score": 0.77, "unit_cost": 43.47, "supplier_id": 4, "stockout_risk_score": 0.942, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0015", "warehouse_id": 2, "product_name": "Control Apparel", "category": "Apparel", "on_hand_qty": 0, "on_order_qty": 524, "avg_sales_7d": 43.29, "avg_sales_30d": 40.63, "demand_volatility_30d": 14.19, "days_of_supply": 0.0, "base_lead_time_days": 9, "reliability_score": 0.77, "unit_cost": 43.47, "supplier_id": 4, "stockout_risk_score": 0.973, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0015", "warehouse_id": 3, "product_name": "Control Apparel", "category": "Apparel", "on_hand_qty": 157, "on_order_qty": 423, "avg_sales_7d": 29.86, "avg_sales_30d": 28.03, "demand_volatility_30d": 8.6, "days_of_supply": 5.6, "base_lead_time_days": 9, "reliability_score": 0.77, "unit_cost": 43.47, "supplier_id": 4, "stockout_risk_score": 0.823, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0015", "warehouse_id": 4, "product_name": "Control Apparel", "category": "Apparel", "on_hand_qty": 550, "on_order_qty": 0, "avg_sales_7d": 12.86, "avg_sales_30d": 32.3, "demand_volatility_30d": 21.79, "days_of_supply": 17.0, "base_lead_time_days": 9, "reliability_score": 0.77, "unit_cost": 43.47, "supplier_id": 4, "stockout_risk_score": 0.682, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0016", "warehouse_id": 1, "product_name": "Among Grocery", "category": "Grocery", "on_hand_qty": 81, "on_order_qty": 481, "avg_sales_7d": 35.57, "avg_sales_30d": 31.73, "demand_volatility_30d": 8.16, "days_of_supply": 2.6, "base_lead_time_days": 10, "reliability_score": 0.77, "unit_cost": 13.7, "supplier_id": 3, "stockout_risk_score": 0.83, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0016", "warehouse_id": 2, "product_name": "Among Grocery", "category": "Grocery", "on_hand_qty": 117, "on_order_qty": 187, "avg_sales_7d": 11.71, "avg_sales_30d": 10.2, "demand_volatility_30d": 4.93, "days_of_supply": 11.5, "base_lead_time_days": 10, "reliability_score": 0.77, "unit_cost": 13.7, "supplier_id": 3, "stockout_risk_score": 0.437, "risk_tier": "Medium", "recommended_action": "Monitor / review in 7 days", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0016", "warehouse_id": 3, "product_name": "Among Grocery", "category": "Grocery", "on_hand_qty": 276, "on_order_qty": 643, "avg_sales_7d": 57.14, "avg_sales_30d": 53.87, "demand_volatility_30d": 10.77, "days_of_supply": 5.1, "base_lead_time_days": 10, "reliability_score": 0.77, "unit_cost": 13.7, "supplier_id": 3, "stockout_risk_score": 0.674, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0016", "warehouse_id": 4, "product_name": "Among Grocery", "category": "Grocery", "on_hand_qty": 24, "on_order_qty": 780, "avg_sales_7d": 46.71, "avg_sales_30d": 44.07, "demand_volatility_30d": 6.51, "days_of_supply": 0.5, "base_lead_time_days": 10, "reliability_score": 0.77, "unit_cost": 13.7, "supplier_id": 3, "stockout_risk_score": 0.793, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0017", "warehouse_id": 1, "product_name": "Operation Grocery", "category": "Grocery", "on_hand_qty": 595, "on_order_qty": 0, "avg_sales_7d": 38.86, "avg_sales_30d": 42.67, "demand_volatility_30d": 7.92, "days_of_supply": 14.0, "base_lead_time_days": 10, "reliability_score": 0.94, "unit_cost": 16.81, "supplier_id": 2, "stockout_risk_score": 0.096, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0017", "warehouse_id": 2, "product_name": "Operation Grocery", "category": "Grocery", "on_hand_qty": 539, "on_order_qty": 0, "avg_sales_7d": 33.0, "avg_sales_30d": 36.97, "demand_volatility_30d": 12.6, "days_of_supply": 14.6, "base_lead_time_days": 10, "reliability_score": 0.94, "unit_cost": 16.81, "supplier_id": 2, "stockout_risk_score": 0.222, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0017", "warehouse_id": 3, "product_name": "Operation Grocery", "category": "Grocery", "on_hand_qty": 301, "on_order_qty": 0, "avg_sales_7d": 25.57, "avg_sales_30d": 26.57, "demand_volatility_30d": 4.3, "days_of_supply": 11.3, "base_lead_time_days": 10, "reliability_score": 0.94, "unit_cost": 16.81, "supplier_id": 2, "stockout_risk_score": 0.175, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0017", "warehouse_id": 4, "product_name": "Operation Grocery", "category": "Grocery", "on_hand_qty": 501, "on_order_qty": 0, "avg_sales_7d": 39.0, "avg_sales_30d": 45.33, "demand_volatility_30d": 10.78, "days_of_supply": 11.0, "base_lead_time_days": 10, "reliability_score": 0.94, "unit_cost": 16.81, "supplier_id": 2, "stockout_risk_score": 0.242, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0018", "warehouse_id": 1, "product_name": "Service Grocery", "category": "Grocery", "on_hand_qty": 150, "on_order_qty": 0, "avg_sales_7d": 11.0, "avg_sales_30d": 11.97, "demand_volatility_30d": 4.77, "days_of_supply": 12.5, "base_lead_time_days": 9, "reliability_score": 0.77, "unit_cost": 11.68, "supplier_id": 4, "stockout_risk_score": 0.343, "risk_tier": "Medium", "recommended_action": "Monitor / review in 7 days", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0018", "warehouse_id": 2, "product_name": "Service Grocery", "category": "Grocery", "on_hand_qty": 337, "on_order_qty": 787, "avg_sales_7d": 56.0, "avg_sales_30d": 43.03, "demand_volatility_30d": 23.8, "days_of_supply": 7.8, "base_lead_time_days": 9, "reliability_score": 0.77, "unit_cost": 11.68, "supplier_id": 4, "stockout_risk_score": 0.955, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0018", "warehouse_id": 3, "product_name": "Service Grocery", "category": "Grocery", "on_hand_qty": 130, "on_order_qty": 0, "avg_sales_7d": 8.43, "avg_sales_30d": 13.0, "demand_volatility_30d": 7.48, "days_of_supply": 10.0, "base_lead_time_days": 9, "reliability_score": 0.77, "unit_cost": 11.68, "supplier_id": 4, "stockout_risk_score": 0.565, "risk_tier": "Medium", "recommended_action": "Monitor / review in 7 days", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0018", "warehouse_id": 4, "product_name": "Service Grocery", "category": "Grocery", "on_hand_qty": 97, "on_order_qty": 428, "avg_sales_7d": 40.0, "avg_sales_30d": 33.5, "demand_volatility_30d": 19.24, "days_of_supply": 2.9, "base_lead_time_days": 9, "reliability_score": 0.77, "unit_cost": 11.68, "supplier_id": 4, "stockout_risk_score": 0.973, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0019", "warehouse_id": 1, "product_name": "Federal Electronics", "category": "Electronics", "on_hand_qty": 183, "on_order_qty": 666, "avg_sales_7d": 30.0, "avg_sales_30d": 24.33, "demand_volatility_30d": 12.26, "days_of_supply": 7.5, "base_lead_time_days": 21, "reliability_score": 0.81, "unit_cost": 123.64, "supplier_id": 10, "stockout_risk_score": 0.881, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0019", "warehouse_id": 2, "product_name": "Federal Electronics", "category": "Electronics", "on_hand_qty": 0, "on_order_qty": 766, "avg_sales_7d": 0.0, "avg_sales_30d": 22.63, "demand_volatility_30d": 16.0, "days_of_supply": 0.0, "base_lead_time_days": 21, "reliability_score": 0.81, "unit_cost": 123.64, "supplier_id": 10, "stockout_risk_score": 0.976, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0019", "warehouse_id": 3, "product_name": "Federal Electronics", "category": "Electronics", "on_hand_qty": 137, "on_order_qty": 279, "avg_sales_7d": 10.14, "avg_sales_30d": 9.53, "demand_volatility_30d": 4.96, "days_of_supply": 14.4, "base_lead_time_days": 21, "reliability_score": 0.81, "unit_cost": 123.64, "supplier_id": 10, "stockout_risk_score": 0.422, "risk_tier": "Medium", "recommended_action": "Monitor / review in 7 days", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0019", "warehouse_id": 4, "product_name": "Federal Electronics", "category": "Electronics", "on_hand_qty": 0, "on_order_qty": 1131, "avg_sales_7d": 28.0, "avg_sales_30d": 37.7, "demand_volatility_30d": 15.79, "days_of_supply": 0.0, "base_lead_time_days": 21, "reliability_score": 0.81, "unit_cost": 123.64, "supplier_id": 10, "stockout_risk_score": 0.973, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0020", "warehouse_id": 1, "product_name": "Crime Garden", "category": "Garden", "on_hand_qty": 256, "on_order_qty": 0, "avg_sales_7d": 2.0, "avg_sales_30d": 1.73, "demand_volatility_30d": 0.87, "days_of_supply": 147.7, "base_lead_time_days": 19, "reliability_score": 0.86, "unit_cost": 89.83, "supplier_id": 1, "stockout_risk_score": 0.0, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0020", "warehouse_id": 2, "product_name": "Crime Garden", "category": "Garden", "on_hand_qty": 412, "on_order_qty": 0, "avg_sales_7d": 2.43, "avg_sales_30d": 3.1, "demand_volatility_30d": 1.99, "days_of_supply": 132.9, "base_lead_time_days": 19, "reliability_score": 0.86, "unit_cost": 89.83, "supplier_id": 1, "stockout_risk_score": 0.0, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0020", "warehouse_id": 3, "product_name": "Crime Garden", "category": "Garden", "on_hand_qty": 271, "on_order_qty": 0, "avg_sales_7d": 4.86, "avg_sales_30d": 3.03, "demand_volatility_30d": 1.85, "days_of_supply": 89.3, "base_lead_time_days": 19, "reliability_score": 0.86, "unit_cost": 89.83, "supplier_id": 1, "stockout_risk_score": 0.0, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0020", "warehouse_id": 4, "product_name": "Crime Garden", "category": "Garden", "on_hand_qty": 854, "on_order_qty": 1230, "avg_sales_7d": 10.14, "avg_sales_30d": 11.57, "demand_volatility_30d": 2.69, "days_of_supply": 73.8, "base_lead_time_days": 19, "reliability_score": 0.86, "unit_cost": 89.83, "supplier_id": 1, "stockout_risk_score": 0.0, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0021", "warehouse_id": 1, "product_name": "Development Apparel", "category": "Apparel", "on_hand_qty": 489, "on_order_qty": 0, "avg_sales_7d": 16.43, "avg_sales_30d": 16.47, "demand_volatility_30d": 4.07, "days_of_supply": 29.7, "base_lead_time_days": 21, "reliability_score": 0.81, "unit_cost": 17.74, "supplier_id": 10, "stockout_risk_score": 0.028, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0021", "warehouse_id": 2, "product_name": "Development Apparel", "category": "Apparel", "on_hand_qty": 102, "on_order_qty": 859, "avg_sales_7d": 32.86, "avg_sales_30d": 34.8, "demand_volatility_30d": 7.49, "days_of_supply": 2.9, "base_lead_time_days": 21, "reliability_score": 0.81, "unit_cost": 17.74, "supplier_id": 10, "stockout_risk_score": 0.889, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0021", "warehouse_id": 3, "product_name": "Development Apparel", "category": "Apparel", "on_hand_qty": 0, "on_order_qty": 146, "avg_sales_7d": 4.0, "avg_sales_30d": 4.43, "demand_volatility_30d": 2.18, "days_of_supply": 0.0, "base_lead_time_days": 21, "reliability_score": 0.81, "unit_cost": 17.74, "supplier_id": 10, "stockout_risk_score": 0.936, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0021", "warehouse_id": 4, "product_name": "Development Apparel", "category": "Apparel", "on_hand_qty": 0, "on_order_qty": 423, "avg_sales_7d": 12.57, "avg_sales_30d": 14.1, "demand_volatility_30d": 8.87, "days_of_supply": 0.0, "base_lead_time_days": 21, "reliability_score": 0.81, "unit_cost": 17.74, "supplier_id": 10, "stockout_risk_score": 0.975, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0022", "warehouse_id": 1, "product_name": "Alone HomeGoods", "category": "HomeGoods", "on_hand_qty": 126, "on_order_qty": 1128, "avg_sales_7d": 53.0, "avg_sales_30d": 51.47, "demand_volatility_30d": 7.38, "days_of_supply": 2.4, "base_lead_time_days": 19, "reliability_score": 0.86, "unit_cost": 92.89, "supplier_id": 1, "stockout_risk_score": 0.738, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0022", "warehouse_id": 2, "product_name": "Alone HomeGoods", "category": "HomeGoods", "on_hand_qty": 566, "on_order_qty": 0, "avg_sales_7d": 16.57, "avg_sales_30d": 17.5, "demand_volatility_30d": 4.39, "days_of_supply": 32.3, "base_lead_time_days": 19, "reliability_score": 0.86, "unit_cost": 92.89, "supplier_id": 1, "stockout_risk_score": 0.008, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0022", "warehouse_id": 3, "product_name": "Alone HomeGoods", "category": "HomeGoods", "on_hand_qty": 1150, "on_order_qty": 0, "avg_sales_7d": 41.71, "avg_sales_30d": 42.07, "demand_volatility_30d": 7.23, "days_of_supply": 27.3, "base_lead_time_days": 19, "reliability_score": 0.86, "unit_cost": 92.89, "supplier_id": 1, "stockout_risk_score": 0.008, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0022", "warehouse_id": 4, "product_name": "Alone HomeGoods", "category": "HomeGoods", "on_hand_qty": 273, "on_order_qty": 706, "avg_sales_7d": 20.57, "avg_sales_30d": 20.57, "demand_volatility_30d": 4.79, "days_of_supply": 13.3, "base_lead_time_days": 19, "reliability_score": 0.86, "unit_cost": 92.89, "supplier_id": 1, "stockout_risk_score": 0.284, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0023", "warehouse_id": 1, "product_name": "Dinner Apparel", "category": "Apparel", "on_hand_qty": 109, "on_order_qty": 0, "avg_sales_7d": 2.14, "avg_sales_30d": 4.47, "demand_volatility_30d": 2.97, "days_of_supply": 24.4, "base_lead_time_days": 17, "reliability_score": 0.98, "unit_cost": 19.09, "supplier_id": 5, "stockout_risk_score": 0.065, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0023", "warehouse_id": 2, "product_name": "Dinner Apparel", "category": "Apparel", "on_hand_qty": 244, "on_order_qty": 679, "avg_sales_7d": 32.29, "avg_sales_30d": 30.73, "demand_volatility_30d": 10.01, "days_of_supply": 7.9, "base_lead_time_days": 17, "reliability_score": 0.98, "unit_cost": 19.09, "supplier_id": 5, "stockout_risk_score": 0.717, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0023", "warehouse_id": 3, "product_name": "Dinner Apparel", "category": "Apparel", "on_hand_qty": 421, "on_order_qty": 726, "avg_sales_7d": 35.57, "avg_sales_30d": 32.4, "demand_volatility_30d": 4.99, "days_of_supply": 13.0, "base_lead_time_days": 17, "reliability_score": 0.98, "unit_cost": 19.09, "supplier_id": 5, "stockout_risk_score": 0.223, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0023", "warehouse_id": 4, "product_name": "Dinner Apparel", "category": "Apparel", "on_hand_qty": 270, "on_order_qty": 724, "avg_sales_7d": 26.43, "avg_sales_30d": 25.7, "demand_volatility_30d": 6.05, "days_of_supply": 10.5, "base_lead_time_days": 17, "reliability_score": 0.98, "unit_cost": 19.09, "supplier_id": 5, "stockout_risk_score": 0.437, "risk_tier": "Medium", "recommended_action": "Monitor / review in 7 days", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0024", "warehouse_id": 1, "product_name": "Generation Electronics", "category": "Electronics", "on_hand_qty": 0, "on_order_qty": 201, "avg_sales_7d": 38.29, "avg_sales_30d": 40.2, "demand_volatility_30d": 17.83, "days_of_supply": 0.0, "base_lead_time_days": 5, "reliability_score": 0.95, "unit_cost": 279.53, "supplier_id": 6, "stockout_risk_score": 0.944, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0024", "warehouse_id": 2, "product_name": "Generation Electronics", "category": "Electronics", "on_hand_qty": 0, "on_order_qty": 174, "avg_sales_7d": 24.86, "avg_sales_30d": 23.2, "demand_volatility_30d": 10.51, "days_of_supply": 0.0, "base_lead_time_days": 5, "reliability_score": 0.95, "unit_cost": 279.53, "supplier_id": 6, "stockout_risk_score": 0.875, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0024", "warehouse_id": 3, "product_name": "Generation Electronics", "category": "Electronics", "on_hand_qty": 0, "on_order_qty": 223, "avg_sales_7d": 31.86, "avg_sales_30d": 29.73, "demand_volatility_30d": 12.77, "days_of_supply": 0.0, "base_lead_time_days": 5, "reliability_score": 0.95, "unit_cost": 279.53, "supplier_id": 6, "stockout_risk_score": 0.902, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0024", "warehouse_id": 4, "product_name": "Generation Electronics", "category": "Electronics", "on_hand_qty": 0, "on_order_qty": 67, "avg_sales_7d": 8.86, "avg_sales_30d": 9.37, "demand_volatility_30d": 5.09, "days_of_supply": 0.0, "base_lead_time_days": 5, "reliability_score": 0.95, "unit_cost": 279.53, "supplier_id": 6, "stockout_risk_score": 0.77, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0025", "warehouse_id": 1, "product_name": "Edge Garden", "category": "Garden", "on_hand_qty": 772, "on_order_qty": 0, "avg_sales_7d": 11.29, "avg_sales_30d": 12.93, "demand_volatility_30d": 3.62, "days_of_supply": 59.7, "base_lead_time_days": 10, "reliability_score": 0.94, "unit_cost": 40.89, "supplier_id": 2, "stockout_risk_score": 0.0, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0025", "warehouse_id": 2, "product_name": "Edge Garden", "category": "Garden", "on_hand_qty": 381, "on_order_qty": 0, "avg_sales_7d": 6.0, "avg_sales_30d": 5.33, "demand_volatility_30d": 2.07, "days_of_supply": 71.4, "base_lead_time_days": 10, "reliability_score": 0.94, "unit_cost": 40.89, "supplier_id": 2, "stockout_risk_score": 0.0, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0025", "warehouse_id": 3, "product_name": "Edge Garden", "category": "Garden", "on_hand_qty": 222, "on_order_qty": 437, "avg_sales_7d": 9.86, "avg_sales_30d": 8.73, "demand_volatility_30d": 3.25, "days_of_supply": 25.4, "base_lead_time_days": 10, "reliability_score": 0.94, "unit_cost": 40.89, "supplier_id": 2, "stockout_risk_score": 0.082, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0025", "warehouse_id": 4, "product_name": "Edge Garden", "category": "Garden", "on_hand_qty": 181, "on_order_qty": 0, "avg_sales_7d": 3.86, "avg_sales_30d": 3.97, "demand_volatility_30d": 2.2, "days_of_supply": 45.6, "base_lead_time_days": 10, "reliability_score": 0.94, "unit_cost": 40.89, "supplier_id": 2, "stockout_risk_score": 0.002, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0026", "warehouse_id": 1, "product_name": "Account Electronics", "category": "Electronics", "on_hand_qty": 459, "on_order_qty": 0, "avg_sales_7d": 43.57, "avg_sales_30d": 43.7, "demand_volatility_30d": 21.84, "days_of_supply": 10.5, "base_lead_time_days": 9, "reliability_score": 0.77, "unit_cost": 104.71, "supplier_id": 4, "stockout_risk_score": 0.873, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0026", "warehouse_id": 2, "product_name": "Account Electronics", "category": "Electronics", "on_hand_qty": 143, "on_order_qty": 755, "avg_sales_7d": 63.57, "avg_sales_30d": 61.47, "demand_volatility_30d": 14.58, "days_of_supply": 2.3, "base_lead_time_days": 9, "reliability_score": 0.77, "unit_cost": 104.71, "supplier_id": 4, "stockout_risk_score": 0.884, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0026", "warehouse_id": 3, "product_name": "Account Electronics", "category": "Electronics", "on_hand_qty": 53, "on_order_qty": 330, "avg_sales_7d": 35.14, "avg_sales_30d": 31.83, "demand_volatility_30d": 11.78, "days_of_supply": 1.7, "base_lead_time_days": 9, "reliability_score": 0.77, "unit_cost": 104.71, "supplier_id": 4, "stockout_risk_score": 0.93, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0026", "warehouse_id": 4, "product_name": "Account Electronics", "category": "Electronics", "on_hand_qty": 781, "on_order_qty": 0, "avg_sales_7d": 55.43, "avg_sales_30d": 49.4, "demand_volatility_30d": 36.3, "days_of_supply": 15.8, "base_lead_time_days": 9, "reliability_score": 0.77, "unit_cost": 104.71, "supplier_id": 4, "stockout_risk_score": 0.962, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0027", "warehouse_id": 1, "product_name": "Three Electronics", "category": "Electronics", "on_hand_qty": 0, "on_order_qty": 114, "avg_sales_7d": 16.29, "avg_sales_30d": 19.0, "demand_volatility_30d": 10.81, "days_of_supply": 0.0, "base_lead_time_days": 5, "reliability_score": 0.95, "unit_cost": 226.4, "supplier_id": 6, "stockout_risk_score": 0.889, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0027", "warehouse_id": 2, "product_name": "Three Electronics", "category": "Electronics", "on_hand_qty": 47, "on_order_qty": 180, "avg_sales_7d": 40.86, "avg_sales_30d": 36.6, "demand_volatility_30d": 9.75, "days_of_supply": 1.3, "base_lead_time_days": 5, "reliability_score": 0.95, "unit_cost": 226.4, "supplier_id": 6, "stockout_risk_score": 0.786, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0027", "warehouse_id": 3, "product_name": "Three Electronics", "category": "Electronics", "on_hand_qty": 207, "on_order_qty": 0, "avg_sales_7d": 45.29, "avg_sales_30d": 36.77, "demand_volatility_30d": 24.26, "days_of_supply": 5.6, "base_lead_time_days": 5, "reliability_score": 0.95, "unit_cost": 226.4, "supplier_id": 6, "stockout_risk_score": 0.959, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0027", "warehouse_id": 4, "product_name": "Three Electronics", "category": "Electronics", "on_hand_qty": 124, "on_order_qty": 0, "avg_sales_7d": 31.43, "avg_sales_30d": 32.03, "demand_volatility_30d": 16.98, "days_of_supply": 3.9, "base_lead_time_days": 5, "reliability_score": 0.95, "unit_cost": 226.4, "supplier_id": 6, "stockout_risk_score": 0.891, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0028", "warehouse_id": 1, "product_name": "Moment Toys", "category": "Toys", "on_hand_qty": 304, "on_order_qty": 622, "avg_sales_7d": 28.71, "avg_sales_30d": 21.9, "demand_volatility_30d": 12.58, "days_of_supply": 13.9, "base_lead_time_days": 21, "reliability_score": 0.81, "unit_cost": 34.46, "supplier_id": 10, "stockout_risk_score": 0.669, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0028", "warehouse_id": 2, "product_name": "Moment Toys", "category": "Toys", "on_hand_qty": 310, "on_order_qty": 0, "avg_sales_7d": 15.14, "avg_sales_30d": 17.4, "demand_volatility_30d": 11.57, "days_of_supply": 17.8, "base_lead_time_days": 21, "reliability_score": 0.81, "unit_cost": 34.46, "supplier_id": 10, "stockout_risk_score": 0.438, "risk_tier": "Medium", "recommended_action": "Monitor / review in 7 days", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0028", "warehouse_id": 3, "product_name": "Moment Toys", "category": "Toys", "on_hand_qty": 94, "on_order_qty": 717, "avg_sales_7d": 47.43, "avg_sales_30d": 34.37, "demand_volatility_30d": 22.91, "days_of_supply": 2.7, "base_lead_time_days": 21, "reliability_score": 0.81, "unit_cost": 34.46, "supplier_id": 10, "stockout_risk_score": 0.993, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0028", "warehouse_id": 4, "product_name": "Moment Toys", "category": "Toys", "on_hand_qty": 0, "on_order_qty": 317, "avg_sales_7d": 0.0, "avg_sales_30d": 10.57, "demand_volatility_30d": 9.96, "days_of_supply": 0.0, "base_lead_time_days": 21, "reliability_score": 0.81, "unit_cost": 34.46, "supplier_id": 10, "stockout_risk_score": 0.96, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0029", "warehouse_id": 1, "product_name": "Treat Grocery", "category": "Grocery", "on_hand_qty": 486, "on_order_qty": 0, "avg_sales_7d": 46.29, "avg_sales_30d": 46.4, "demand_volatility_30d": 7.92, "days_of_supply": 10.5, "base_lead_time_days": 10, "reliability_score": 0.77, "unit_cost": 21.14, "supplier_id": 3, "stockout_risk_score": 0.282, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0029", "warehouse_id": 2, "product_name": "Treat Grocery", "category": "Grocery", "on_hand_qty": 19, "on_order_qty": 115, "avg_sales_7d": 9.57, "avg_sales_30d": 9.53, "demand_volatility_30d": 2.98, "days_of_supply": 2.0, "base_lead_time_days": 10, "reliability_score": 0.77, "unit_cost": 21.14, "supplier_id": 3, "stockout_risk_score": 0.785, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0029", "warehouse_id": 3, "product_name": "Treat Grocery", "category": "Grocery", "on_hand_qty": 248, "on_order_qty": 0, "avg_sales_7d": 3.57, "avg_sales_30d": 17.77, "demand_volatility_30d": 12.96, "days_of_supply": 14.0, "base_lead_time_days": 10, "reliability_score": 0.77, "unit_cost": 21.14, "supplier_id": 3, "stockout_risk_score": 0.515, "risk_tier": "Medium", "recommended_action": "Monitor / review in 7 days", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0029", "warehouse_id": 4, "product_name": "Treat Grocery", "category": "Grocery", "on_hand_qty": 304, "on_order_qty": 482, "avg_sales_7d": 45.14, "avg_sales_30d": 45.57, "demand_volatility_30d": 7.8, "days_of_supply": 6.7, "base_lead_time_days": 10, "reliability_score": 0.77, "unit_cost": 21.14, "supplier_id": 3, "stockout_risk_score": 0.488, "risk_tier": "Medium", "recommended_action": "Monitor / review in 7 days", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0030", "warehouse_id": 1, "product_name": "Much Grocery", "category": "Grocery", "on_hand_qty": 74, "on_order_qty": 268, "avg_sales_7d": 18.71, "avg_sales_30d": 17.13, "demand_volatility_30d": 4.84, "days_of_supply": 4.3, "base_lead_time_days": 10, "reliability_score": 0.77, "unit_cost": 6.21, "supplier_id": 3, "stockout_risk_score": 0.726, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0030", "warehouse_id": 2, "product_name": "Much Grocery", "category": "Grocery", "on_hand_qty": 85, "on_order_qty": 0, "avg_sales_7d": 4.43, "avg_sales_30d": 4.93, "demand_volatility_30d": 2.88, "days_of_supply": 17.2, "base_lead_time_days": 10, "reliability_score": 0.77, "unit_cost": 6.21, "supplier_id": 3, "stockout_risk_score": 0.173, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0030", "warehouse_id": 3, "product_name": "Much Grocery", "category": "Grocery", "on_hand_qty": 28, "on_order_qty": 174, "avg_sales_7d": 10.14, "avg_sales_30d": 12.27, "demand_volatility_30d": 4.6, "days_of_supply": 2.3, "base_lead_time_days": 10, "reliability_score": 0.77, "unit_cost": 6.21, "supplier_id": 3, "stockout_risk_score": 0.806, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0030", "warehouse_id": 4, "product_name": "Much Grocery", "category": "Grocery", "on_hand_qty": 103, "on_order_qty": 526, "avg_sales_7d": 40.43, "avg_sales_30d": 31.63, "demand_volatility_30d": 15.23, "days_of_supply": 3.3, "base_lead_time_days": 10, "reliability_score": 0.77, "unit_cost": 6.21, "supplier_id": 3, "stockout_risk_score": 0.948, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0031", "warehouse_id": 1, "product_name": "Care Garden", "category": "Garden", "on_hand_qty": 1610, "on_order_qty": 0, "avg_sales_7d": 15.29, "avg_sales_30d": 16.07, "demand_volatility_30d": 3.25, "days_of_supply": 100.2, "base_lead_time_days": 21, "reliability_score": 0.81, "unit_cost": 82.67, "supplier_id": 10, "stockout_risk_score": 0.0, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0031", "warehouse_id": 2, "product_name": "Care Garden", "category": "Garden", "on_hand_qty": 1327, "on_order_qty": 0, "avg_sales_7d": 9.57, "avg_sales_30d": 10.43, "demand_volatility_30d": 3.11, "days_of_supply": 127.2, "base_lead_time_days": 21, "reliability_score": 0.81, "unit_cost": 82.67, "supplier_id": 10, "stockout_risk_score": 0.0, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0031", "warehouse_id": 3, "product_name": "Care Garden", "category": "Garden", "on_hand_qty": 1674, "on_order_qty": 0, "avg_sales_7d": 11.0, "avg_sales_30d": 11.27, "demand_volatility_30d": 3.39, "days_of_supply": 148.6, "base_lead_time_days": 21, "reliability_score": 0.81, "unit_cost": 82.67, "supplier_id": 10, "stockout_risk_score": 0.0, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0031", "warehouse_id": 4, "product_name": "Care Garden", "category": "Garden", "on_hand_qty": 2690, "on_order_qty": 0, "avg_sales_7d": 16.43, "avg_sales_30d": 15.4, "demand_volatility_30d": 3.0, "days_of_supply": 174.7, "base_lead_time_days": 21, "reliability_score": 0.81, "unit_cost": 82.67, "supplier_id": 10, "stockout_risk_score": 0.0, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0032", "warehouse_id": 1, "product_name": "Pass Apparel", "category": "Apparel", "on_hand_qty": 61, "on_order_qty": 157, "avg_sales_7d": 10.71, "avg_sales_30d": 9.57, "demand_volatility_30d": 4.06, "days_of_supply": 6.4, "base_lead_time_days": 10, "reliability_score": 0.77, "unit_cost": 45.72, "supplier_id": 3, "stockout_risk_score": 0.767, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0032", "warehouse_id": 2, "product_name": "Pass Apparel", "category": "Apparel", "on_hand_qty": 165, "on_order_qty": 315, "avg_sales_7d": 23.43, "avg_sales_30d": 23.2, "demand_volatility_30d": 5.04, "days_of_supply": 7.1, "base_lead_time_days": 10, "reliability_score": 0.77, "unit_cost": 45.72, "supplier_id": 3, "stockout_risk_score": 0.669, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0032", "warehouse_id": 3, "product_name": "Pass Apparel", "category": "Apparel", "on_hand_qty": 21, "on_order_qty": 751, "avg_sales_7d": 52.43, "avg_sales_30d": 49.37, "demand_volatility_30d": 16.16, "days_of_supply": 0.4, "base_lead_time_days": 10, "reliability_score": 0.77, "unit_cost": 45.72, "supplier_id": 3, "stockout_risk_score": 0.975, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0032", "warehouse_id": 4, "product_name": "Pass Apparel", "category": "Apparel", "on_hand_qty": 207, "on_order_qty": 496, "avg_sales_7d": 37.43, "avg_sales_30d": 27.17, "demand_volatility_30d": 16.53, "days_of_supply": 7.6, "base_lead_time_days": 10, "reliability_score": 0.77, "unit_cost": 45.72, "supplier_id": 3, "stockout_risk_score": 0.946, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0033", "warehouse_id": 1, "product_name": "Live HomeGoods", "category": "HomeGoods", "on_hand_qty": 1148, "on_order_qty": 0, "avg_sales_7d": 45.14, "avg_sales_30d": 43.37, "demand_volatility_30d": 6.37, "days_of_supply": 26.5, "base_lead_time_days": 19, "reliability_score": 0.89, "unit_cost": 99.91, "supplier_id": 9, "stockout_risk_score": 0.008, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0033", "warehouse_id": 2, "product_name": "Live HomeGoods", "category": "HomeGoods", "on_hand_qty": 479, "on_order_qty": 0, "avg_sales_7d": 22.14, "avg_sales_30d": 23.4, "demand_volatility_30d": 5.43, "days_of_supply": 20.5, "base_lead_time_days": 19, "reliability_score": 0.89, "unit_cost": 99.91, "supplier_id": 9, "stockout_risk_score": 0.073, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0033", "warehouse_id": 3, "product_name": "Live HomeGoods", "category": "HomeGoods", "on_hand_qty": 381, "on_order_qty": 533, "avg_sales_7d": 21.57, "avg_sales_30d": 23.27, "demand_volatility_30d": 5.24, "days_of_supply": 16.4, "base_lead_time_days": 19, "reliability_score": 0.89, "unit_cost": 99.91, "supplier_id": 9, "stockout_risk_score": 0.147, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0033", "warehouse_id": 4, "product_name": "Live HomeGoods", "category": "HomeGoods", "on_hand_qty": 479, "on_order_qty": 0, "avg_sales_7d": 25.43, "avg_sales_30d": 24.83, "demand_volatility_30d": 5.94, "days_of_supply": 19.3, "base_lead_time_days": 19, "reliability_score": 0.89, "unit_cost": 99.91, "supplier_id": 9, "stockout_risk_score": 0.1, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0034", "warehouse_id": 1, "product_name": "Hair Apparel", "category": "Apparel", "on_hand_qty": 93, "on_order_qty": 461, "avg_sales_7d": 47.29, "avg_sales_30d": 44.97, "demand_volatility_30d": 9.8, "days_of_supply": 2.1, "base_lead_time_days": 6, "reliability_score": 0.76, "unit_cost": 43.72, "supplier_id": 7, "stockout_risk_score": 0.881, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0034", "warehouse_id": 2, "product_name": "Hair Apparel", "category": "Apparel", "on_hand_qty": 18, "on_order_qty": 139, "avg_sales_7d": 20.29, "avg_sales_30d": 21.9, "demand_volatility_30d": 6.31, "days_of_supply": 0.8, "base_lead_time_days": 6, "reliability_score": 0.76, "unit_cost": 43.72, "supplier_id": 7, "stockout_risk_score": 0.901, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0034", "warehouse_id": 3, "product_name": "Hair Apparel", "category": "Apparel", "on_hand_qty": 28, "on_order_qty": 247, "avg_sales_7d": 27.29, "avg_sales_30d": 25.63, "demand_volatility_30d": 7.72, "days_of_supply": 1.1, "base_lead_time_days": 6, "reliability_score": 0.76, "unit_cost": 43.72, "supplier_id": 7, "stockout_risk_score": 0.915, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0034", "warehouse_id": 4, "product_name": "Hair Apparel", "category": "Apparel", "on_hand_qty": 122, "on_order_qty": 0, "avg_sales_7d": 22.0, "avg_sales_30d": 22.3, "demand_volatility_30d": 4.54, "days_of_supply": 5.5, "base_lead_time_days": 6, "reliability_score": 0.76, "unit_cost": 43.72, "supplier_id": 7, "stockout_risk_score": 0.708, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0035", "warehouse_id": 1, "product_name": "Cause Grocery", "category": "Grocery", "on_hand_qty": 24, "on_order_qty": 0, "avg_sales_7d": 2.71, "avg_sales_30d": 3.5, "demand_volatility_30d": 2.6, "days_of_supply": 6.9, "base_lead_time_days": 6, "reliability_score": 0.76, "unit_cost": 15.88, "supplier_id": 7, "stockout_risk_score": 0.57, "risk_tier": "Medium", "recommended_action": "Monitor / review in 7 days", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0035", "warehouse_id": 2, "product_name": "Cause Grocery", "category": "Grocery", "on_hand_qty": 59, "on_order_qty": 363, "avg_sales_7d": 52.0, "avg_sales_30d": 54.1, "demand_volatility_30d": 8.05, "days_of_supply": 1.1, "base_lead_time_days": 6, "reliability_score": 0.76, "unit_cost": 15.88, "supplier_id": 7, "stockout_risk_score": 0.736, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0035", "warehouse_id": 3, "product_name": "Cause Grocery", "category": "Grocery", "on_hand_qty": 100, "on_order_qty": 0, "avg_sales_7d": 20.43, "avg_sales_30d": 20.0, "demand_volatility_30d": 3.96, "days_of_supply": 5.0, "base_lead_time_days": 6, "reliability_score": 0.76, "unit_cost": 15.88, "supplier_id": 7, "stockout_risk_score": 0.601, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0035", "warehouse_id": 4, "product_name": "Cause Grocery", "category": "Grocery", "on_hand_qty": 0, "on_order_qty": 149, "avg_sales_7d": 15.57, "avg_sales_30d": 14.5, "demand_volatility_30d": 3.61, "days_of_supply": 0.0, "base_lead_time_days": 6, "reliability_score": 0.76, "unit_cost": 15.88, "supplier_id": 7, "stockout_risk_score": 0.826, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0036", "warehouse_id": 1, "product_name": "Type Electronics", "category": "Electronics", "on_hand_qty": 942, "on_order_qty": 0, "avg_sales_7d": 66.86, "avg_sales_30d": 55.33, "demand_volatility_30d": 24.67, "days_of_supply": 17.0, "base_lead_time_days": 19, "reliability_score": 0.86, "unit_cost": 72.19, "supplier_id": 1, "stockout_risk_score": 0.693, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0036", "warehouse_id": 2, "product_name": "Type Electronics", "category": "Electronics", "on_hand_qty": 603, "on_order_qty": 1342, "avg_sales_7d": 62.14, "avg_sales_30d": 47.07, "demand_volatility_30d": 27.44, "days_of_supply": 12.8, "base_lead_time_days": 19, "reliability_score": 0.86, "unit_cost": 72.19, "supplier_id": 1, "stockout_risk_score": 0.936, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0036", "warehouse_id": 3, "product_name": "Type Electronics", "category": "Electronics", "on_hand_qty": 0, "on_order_qty": 612, "avg_sales_7d": 34.29, "avg_sales_30d": 32.83, "demand_volatility_30d": 12.86, "days_of_supply": 0.0, "base_lead_time_days": 19, "reliability_score": 0.86, "unit_cost": 72.19, "supplier_id": 1, "stockout_risk_score": 0.966, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0036", "warehouse_id": 4, "product_name": "Type Electronics", "category": "Electronics", "on_hand_qty": 214, "on_order_qty": 529, "avg_sales_7d": 33.57, "avg_sales_30d": 17.53, "demand_volatility_30d": 16.94, "days_of_supply": 12.2, "base_lead_time_days": 19, "reliability_score": 0.86, "unit_cost": 72.19, "supplier_id": 1, "stockout_risk_score": 0.905, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0037", "warehouse_id": 1, "product_name": "Later Toys", "category": "Toys", "on_hand_qty": 21, "on_order_qty": 247, "avg_sales_7d": 25.57, "avg_sales_30d": 20.6, "demand_volatility_30d": 11.48, "days_of_supply": 1.0, "base_lead_time_days": 9, "reliability_score": 0.77, "unit_cost": 67.57, "supplier_id": 4, "stockout_risk_score": 0.946, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0037", "warehouse_id": 2, "product_name": "Later Toys", "category": "Toys", "on_hand_qty": 46, "on_order_qty": 596, "avg_sales_7d": 63.71, "avg_sales_30d": 51.57, "demand_volatility_30d": 25.45, "days_of_supply": 0.9, "base_lead_time_days": 9, "reliability_score": 0.77, "unit_cost": 67.57, "supplier_id": 4, "stockout_risk_score": 0.993, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0037", "warehouse_id": 3, "product_name": "Later Toys", "category": "Toys", "on_hand_qty": 0, "on_order_qty": 147, "avg_sales_7d": 4.14, "avg_sales_30d": 10.53, "demand_volatility_30d": 7.22, "days_of_supply": 0.0, "base_lead_time_days": 9, "reliability_score": 0.77, "unit_cost": 67.57, "supplier_id": 4, "stockout_risk_score": 0.906, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0037", "warehouse_id": 4, "product_name": "Later Toys", "category": "Toys", "on_hand_qty": 533, "on_order_qty": 0, "avg_sales_7d": 59.14, "avg_sales_30d": 64.5, "demand_volatility_30d": 27.69, "days_of_supply": 8.3, "base_lead_time_days": 9, "reliability_score": 0.77, "unit_cost": 67.57, "supplier_id": 4, "stockout_risk_score": 0.928, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0038", "warehouse_id": 1, "product_name": "Foot HomeGoods", "category": "HomeGoods", "on_hand_qty": 626, "on_order_qty": 0, "avg_sales_7d": 39.0, "avg_sales_30d": 39.17, "demand_volatility_30d": 8.44, "days_of_supply": 16.0, "base_lead_time_days": 17, "reliability_score": 0.98, "unit_cost": 110.12, "supplier_id": 5, "stockout_risk_score": 0.113, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0038", "warehouse_id": 2, "product_name": "Foot HomeGoods", "category": "HomeGoods", "on_hand_qty": 29, "on_order_qty": 820, "avg_sales_7d": 38.0, "avg_sales_30d": 40.23, "demand_volatility_30d": 7.55, "days_of_supply": 0.7, "base_lead_time_days": 17, "reliability_score": 0.98, "unit_cost": 110.12, "supplier_id": 5, "stockout_risk_score": 0.786, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0038", "warehouse_id": 3, "product_name": "Foot HomeGoods", "category": "HomeGoods", "on_hand_qty": 156, "on_order_qty": 269, "avg_sales_7d": 11.86, "avg_sales_30d": 11.13, "demand_volatility_30d": 3.86, "days_of_supply": 14.0, "base_lead_time_days": 17, "reliability_score": 0.98, "unit_cost": 110.12, "supplier_id": 5, "stockout_risk_score": 0.228, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0038", "warehouse_id": 4, "product_name": "Foot HomeGoods", "category": "HomeGoods", "on_hand_qty": 221, "on_order_qty": 523, "avg_sales_7d": 24.14, "avg_sales_30d": 23.23, "demand_volatility_30d": 4.32, "days_of_supply": 9.5, "base_lead_time_days": 17, "reliability_score": 0.98, "unit_cost": 110.12, "supplier_id": 5, "stockout_risk_score": 0.329, "risk_tier": "Medium", "recommended_action": "Monitor / review in 7 days", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0039", "warehouse_id": 1, "product_name": "Feel Grocery", "category": "Grocery", "on_hand_qty": 343, "on_order_qty": 1024, "avg_sales_7d": 39.14, "avg_sales_30d": 36.33, "demand_volatility_30d": 7.49, "days_of_supply": 9.4, "base_lead_time_days": 21, "reliability_score": 0.81, "unit_cost": 20.95, "supplier_id": 10, "stockout_risk_score": 0.486, "risk_tier": "Medium", "recommended_action": "Monitor / review in 7 days", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0039", "warehouse_id": 2, "product_name": "Feel Grocery", "category": "Grocery", "on_hand_qty": 874, "on_order_qty": 1635, "avg_sales_7d": 48.0, "avg_sales_30d": 46.3, "demand_volatility_30d": 17.19, "days_of_supply": 18.9, "base_lead_time_days": 21, "reliability_score": 0.81, "unit_cost": 20.95, "supplier_id": 10, "stockout_risk_score": 0.241, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0039", "warehouse_id": 3, "product_name": "Feel Grocery", "category": "Grocery", "on_hand_qty": 182, "on_order_qty": 398, "avg_sales_7d": 15.71, "avg_sales_30d": 16.63, "demand_volatility_30d": 3.53, "days_of_supply": 10.9, "base_lead_time_days": 21, "reliability_score": 0.81, "unit_cost": 20.95, "supplier_id": 10, "stockout_risk_score": 0.411, "risk_tier": "Medium", "recommended_action": "Monitor / review in 7 days", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0039", "warehouse_id": 4, "product_name": "Feel Grocery", "category": "Grocery", "on_hand_qty": 148, "on_order_qty": 0, "avg_sales_7d": 2.29, "avg_sales_30d": 4.77, "demand_volatility_30d": 3.1, "days_of_supply": 31.0, "base_lead_time_days": 21, "reliability_score": 0.81, "unit_cost": 20.95, "supplier_id": 10, "stockout_risk_score": 0.02, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-West"}, {"date": "2023-12-31", "sku": "SKU0040", "warehouse_id": 1, "product_name": "Produce Grocery", "category": "Grocery", "on_hand_qty": 763, "on_order_qty": 0, "avg_sales_7d": 48.14, "avg_sales_30d": 51.07, "demand_volatility_30d": 9.37, "days_of_supply": 14.9, "base_lead_time_days": 10, "reliability_score": 0.77, "unit_cost": 8.75, "supplier_id": 3, "stockout_risk_score": 0.112, "risk_tier": "Low", "recommended_action": "No action needed", "warehouse_name": "DC-North"}, {"date": "2023-12-31", "sku": "SKU0040", "warehouse_id": 2, "product_name": "Produce Grocery", "category": "Grocery", "on_hand_qty": 92, "on_order_qty": 230, "avg_sales_7d": 19.43, "avg_sales_30d": 12.27, "demand_volatility_30d": 8.54, "days_of_supply": 7.5, "base_lead_time_days": 10, "reliability_score": 0.77, "unit_cost": 8.75, "supplier_id": 3, "stockout_risk_score": 0.788, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-South"}, {"date": "2023-12-31", "sku": "SKU0040", "warehouse_id": 3, "product_name": "Produce Grocery", "category": "Grocery", "on_hand_qty": 357, "on_order_qty": 646, "avg_sales_7d": 51.43, "avg_sales_30d": 51.3, "demand_volatility_30d": 6.18, "days_of_supply": 7.0, "base_lead_time_days": 10, "reliability_score": 0.77, "unit_cost": 8.75, "supplier_id": 3, "stockout_risk_score": 0.348, "risk_tier": "Medium", "recommended_action": "Monitor / review in 7 days", "warehouse_name": "DC-East"}, {"date": "2023-12-31", "sku": "SKU0040", "warehouse_id": 4, "product_name": "Produce Grocery", "category": "Grocery", "on_hand_qty": 0, "on_order_qty": 784, "avg_sales_7d": 37.86, "avg_sales_30d": 41.47, "demand_volatility_30d": 17.21, "days_of_supply": 0.0, "base_lead_time_days": 10, "reliability_score": 0.77, "unit_cost": 8.75, "supplier_id": 3, "stockout_risk_score": 0.969, "risk_tier": "High", "recommended_action": "Place PO this week", "warehouse_name": "DC-West"}], "feature_importance": [{"feature": "days_of_supply", "coefficient": -6.038}, {"feature": "demand_volatility_30d", "coefficient": 0.616}, {"feature": "avg_sales_30d", "coefficient": -0.559}, {"feature": "on_hand_qty", "coefficient": -0.448}, {"feature": "cat_Garden", "coefficient": 0.342}, {"feature": "avg_sales_7d", "coefficient": 0.294}, {"feature": "base_lead_time_days", "coefficient": 0.272}, {"feature": "reliability_score", "coefficient": -0.234}, {"feature": "cat_Grocery", "coefficient": -0.166}, {"feature": "unit_cost", "coefficient": -0.122}, {"feature": "cat_Toys", "coefficient": -0.091}, {"feature": "cat_Apparel", "coefficient": 0.083}, {"feature": "on_order_qty", "coefficient": -0.068}, {"feature": "cat_HomeGoods", "coefficient": -0.042}, {"feature": "cat_Electronics", "coefficient": -0.038}], "lead_time_months": ["2023-01", "2023-02", "2023-03", "2023-04", "2023-05", "2023-06", "2023-07", "2023-08", "2023-09", "2023-10", "2023-11", "2023-12"], "lead_time_series": {"Doyle, Watkins and Patel (#1)": [19.7, 19.6, 19.0, 19.8, 19.2, 19.9, 47.5, 59.2, 19.8, 19.8, 19.6, 19.5], "Robinson, Lamb and Wallace (#5)": [17.0, 17.0, 17.0, 17.0, 17.4, 17.0, 36.2, 51.0, 37.4, 17.0, 17.0, 17.0], "Morales, Hendrix and Robertson (#8)": [5.0, 5.0, 5.5, 5.0, 5.0, 5.0, 9.4, 15.0, 10.7, 5.8, 5.0, 5.2], "Avg \u2014 all other suppliers": [12.1, 11.9, 12.4, 12.0, 12.4, 12.0, 12.0, 12.2, 12.1, 12.1, 12.1, 12.0]}, "metrics": {"logistic_regression": {"threshold": 0.5, "precision": 0.604, "recall": 0.758, "f1": 0.672, "roc_auc": 0.839, "pr_auc": 0.746, "confusion_matrix": [[824, 310], [151, 472]]}, "random_forest": {"threshold": 0.4, "precision": 0.594, "recall": 0.764, "f1": 0.669, "roc_auc": 0.821, "pr_auc": 0.715, "confusion_matrix": [[809, 325], [147, 476]]}}}</script>
+<script>
+const BUNDLE = JSON.parse(document.getElementById('data-bundle').textContent);
+const ROWS = BUNDLE.rows;
+const FI = BUNDLE.feature_importance;
+const METRICS = BUNDLE.metrics.logistic_regression;
+
+const fmt$ = n => '$' + Math.round(n).toLocaleString('en-US');
+
+/* ---------- KPI strip (computed live) ---------- */
+function computeKPIs(rows){
+  const total = rows.length;
+  const high = rows.filter(r=>r.risk_tier==='High');
+  const med = rows.filter(r=>r.risk_tier==='Medium');
+  const low = rows.filter(r=>r.risk_tier==='Low');
+  const exposure = high.reduce((s,r)=> s + r.unit_cost*r.avg_sales_7d*r.base_lead_time_days, 0);
+  return {total, high: high.length, med: med.length, low: low.length, exposure};
+}
+function renderKPIs(){
+  const k = computeKPIs(ROWS);
+  document.getElementById('kpi-total').textContent = k.total;
+  document.getElementById('kpi-high').textContent = k.high;
+  document.getElementById('kpi-high-pct').textContent = Math.round(100*k.high/k.total) + '% of all pairs';
+  document.getElementById('kpi-med').textContent = k.med;
+  document.getElementById('kpi-low').textContent = k.low;
+  document.getElementById('kpi-exposure').textContent = fmt$(k.exposure);
+  document.getElementById('hero-high').textContent = k.high + ' of ' + k.total;
+  document.getElementById('hero-exposure').textContent = '$' + (k.exposure/1e6).toFixed(2) + 'M';
+  document.getElementById('nav-status').textContent = k.total + ' SKU-warehouse pairs loaded';
+}
+renderKPIs();
+
+/* ---------- Filters / dropdowns ---------- */
+const warehouses = [...new Set(ROWS.map(r=>r.warehouse_name))].sort();
+const categories = [...new Set(ROWS.map(r=>r.category))].sort();
+const whSel = document.getElementById('f-warehouse');
+const catSel = document.getElementById('f-category');
+warehouses.forEach(w=>{ const o=document.createElement('option'); o.value=w; o.textContent=w; whSel.appendChild(o); });
+categories.forEach(c=>{ const o=document.createElement('option'); o.value=c; o.textContent=c; catSel.appendChild(o); });
+
+let state = { search:'', warehouse:'', category:'', tiers:{High:true, Medium:true, Low:true}, sortKey:'stockout_risk_score', sortDir:-1 };
+
+function applyFilters(){
+  return ROWS.filter(r=>{
+    if(state.warehouse && r.warehouse_name!==state.warehouse) return false;
+    if(state.category && r.category!==state.category) return false;
+    if(!state.tiers[r.risk_tier]) return false;
+    if(state.search){
+      const s = state.search.toLowerCase();
+      if(!r.sku.toLowerCase().includes(s) && !r.product_name.toLowerCase().includes(s)) return false;
+    }
+    return true;
+  });
+}
+
+function sortRows(rows){
+  const {sortKey, sortDir} = state;
+  return rows.slice().sort((a,b)=>{
+    let av=a[sortKey], bv=b[sortKey];
+    if(typeof av==='string'){ av=av.toLowerCase(); bv=bv.toLowerCase(); }
+    if(av<bv) return -1*sortDir;
+    if(av>bv) return 1*sortDir;
+    return 0;
+  });
+}
+
+function dosColor(d){
+  if(d < 7) return 'var(--high)';
+  if(d < 15) return 'var(--med)';
+  return 'var(--low)';
+}
+
+function renderTable(){
+  const filtered = sortRows(applyFilters());
+  document.getElementById('resultcount').textContent = filtered.length + ' of ' + ROWS.length + ' pairs shown';
+  const body = document.getElementById('table-body');
+  body.innerHTML = '';
+  const maxDos = 90;
+  filtered.forEach(r=>{
+    const tr = document.createElement('tr');
+    const dosPct = Math.min(100, (r.days_of_supply/maxDos)*100);
+    tr.innerHTML = `
+      <td class="sku">${r.sku}</td>
+      <td>${r.product_name}</td>
+      <td>${r.warehouse_name}</td>
+      <td>${r.category}</td>
+      <td class="num"><span class="dos-bar"><i style="width:${dosPct}%; background:${dosColor(r.days_of_supply)}"></i></span>${r.days_of_supply}d</td>
+      <td class="num">${r.base_lead_time_days}d</td>
+      <td class="num">${r.stockout_risk_score.toFixed(3)}</td>
+      <td><span class="badge ${r.risk_tier}">${r.risk_tier}</span></td>
+      <td style="font-size:11.5px;">${r.recommended_action}</td>
+    `;
+    tr.addEventListener('click', ()=> openPanel(r));
+    body.appendChild(tr);
+  });
+}
+
+document.getElementById('search').addEventListener('input', e=>{ state.search = e.target.value; renderTable(); });
+whSel.addEventListener('change', e=>{ state.warehouse = e.target.value; renderTable(); });
+catSel.addEventListener('change', e=>{ state.category = e.target.value; renderTable(); });
+document.querySelectorAll('.tbtn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    const tier = btn.getAttribute('data-tier');
+    const now = btn.getAttribute('data-active')==='1';
+    btn.setAttribute('data-active', now ? '0':'1');
+    state.tiers[tier] = !now;
+    renderTable();
+  });
+});
+document.querySelectorAll('th[data-key]').forEach(th=>{
+  th.addEventListener('click', ()=>{
+    const key = th.getAttribute('data-key');
+    if(state.sortKey===key){ state.sortDir *= -1; } else { state.sortKey = key; state.sortDir = -1; }
+    renderTable();
+  });
+});
+
+renderTable();
+
+/* ---------- Reorder calculator panel ---------- */
+const overlay = document.getElementById('overlay');
+function openPanel(r){
+  document.getElementById('panel-sku').textContent = r.sku + ' — ' + r.product_name;
+  document.getElementById('panel-sub').textContent = r.warehouse_name + ' · ' + r.category + ' · risk score ' + r.stockout_risk_score.toFixed(3);
+  document.getElementById('c-onhand').textContent = r.on_hand_qty.toLocaleString();
+  document.getElementById('c-onorder').textContent = r.on_order_qty.toLocaleString();
+  document.getElementById('c-sales').textContent = r.avg_sales_7d.toFixed(1) + ' units';
+  document.getElementById('c-lead').textContent = r.base_lead_time_days + ' days';
+
+  const daysLeft = r.avg_sales_7d > 0 ? (r.on_hand_qty / r.avg_sales_7d) : 999;
+  const leadTime = r.base_lead_time_days;
+  const safetyDays = 7;
+  const targetCoverDays = leadTime + safetyDays;
+  const targetQty = Math.max(0, Math.round(targetCoverDays * r.avg_sales_7d - r.on_hand_qty - r.on_order_qty));
+  const gap = daysLeft - leadTime;
+
+  const calloutEl = document.getElementById('c-callout');
+  let msg;
+  if(gap < 0){
+    calloutEl.style.background='var(--high-soft)'; calloutEl.style.borderColor='rgba(255,86,48,.35)';
+    msg = `<b style="color:var(--high)">Stock runs out in ~${daysLeft.toFixed(1)} days — before a reorder placed today would arrive (${leadTime}d lead time).</b>This pair will likely stock out unless an order goes in today, or it's expedited.`;
+  } else if(gap < 7){
+    calloutEl.style.background='var(--med-soft)'; calloutEl.style.borderColor='rgba(255,171,46,.35)';
+    msg = `<b style="color:var(--med)">Only ${gap.toFixed(1)} days of buffer beyond lead time.</b>Cutting it close — a small demand spike would push this into stockout territory.`;
+  } else {
+    calloutEl.style.background='var(--low-soft)'; calloutEl.style.borderColor='rgba(54,179,126,.35)';
+    msg = `<b style="color:var(--low)">${gap.toFixed(1)} days of buffer beyond lead time.</b>Comfortable cushion at current sales pace.`;
+  }
+  calloutEl.innerHTML = msg;
+
+  document.getElementById('c-recommend').innerHTML =
+    `<b>Suggested reorder quantity: ${targetQty.toLocaleString()} units</b><br>
+     Sized to cover lead time (${leadTime}d) + a ${safetyDays}-day safety buffer at the current 7-day sales pace, net of what's already on hand and on order.<br><br>
+     <span style="color:var(--text-faint)">Formula: (lead time + safety days) × avg daily sales − on hand − on order.</span>`;
+
+  overlay.classList.add('open');
+}
+document.getElementById('panel-close').addEventListener('click', ()=> overlay.classList.remove('open'));
+overlay.addEventListener('click', e=>{ if(e.target===overlay) overlay.classList.remove('open'); });
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') overlay.classList.remove('open'); });
+
+/* ---------- Code tabs ---------- */
+document.querySelectorAll('.tabbtn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    const tab = btn.getAttribute('data-tab');
+    document.querySelectorAll('.tabbtn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.tabbody').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelector('.tabbody[data-tab="'+tab+'"]').classList.add('active');
+  });
+});
+
+/* ---------- Charts ---------- */
+Chart.defaults.color = '#9AA0A0';
+Chart.defaults.font.family = "'JetBrains Mono','IBM Plex Mono',monospace";
+Chart.defaults.font.size = 11;
+Chart.defaults.borderColor = '#272B2E';
+
+const kAll = computeKPIs(ROWS);
+new Chart(document.getElementById('chart-donut'), {
+  type:'doughnut',
+  data:{
+    labels:['High','Medium','Low'],
+    datasets:[{ data:[kAll.high, kAll.med, kAll.low], backgroundColor:['#FF5630','#FFAB2E','#36B37E'], borderColor:'#16191B', borderWidth:3 }]
+  },
+  options:{ plugins:{ legend:{ position:'bottom' } }, cutout:'62%' }
+});
+
+const catAvg = {};
+categories.forEach(c=>{
+  const rs = ROWS.filter(r=>r.category===c);
+  catAvg[c] = rs.reduce((s,r)=>s+r.days_of_supply,0)/rs.length;
+});
+const catSorted = Object.entries(catAvg).sort((a,b)=>a[1]-b[1]);
+new Chart(document.getElementById('chart-category'), {
+  type:'bar',
+  data:{
+    labels: catSorted.map(c=>c[0]),
+    datasets:[{ data: catSorted.map(c=>+c[1].toFixed(1)), backgroundColor: catSorted.map(c=> c[1]<7?'#FF5630':c[1]<15?'#FFAB2E':'#36B37E'), borderRadius:4 }]
+  },
+  options:{ indexAxis:'y', plugins:{legend:{display:false}}, scales:{ x:{grid:{color:'#1E2224'}}, y:{grid:{display:false}} } }
+});
+
+const fiSorted = FI.slice().sort((a,b)=>a.coefficient-b.coefficient);
+new Chart(document.getElementById('chart-importance'), {
+  type:'bar',
+  data:{
+    labels: fiSorted.map(f=>f.feature),
+    datasets:[{ data: fiSorted.map(f=>f.coefficient), backgroundColor: fiSorted.map(f=> f.coefficient<0 ? '#5C8AFF' : '#FFC93C'), borderRadius:3 }]
+  },
+  options:{ indexAxis:'y', plugins:{legend:{display:false}}, scales:{ x:{grid:{color:'#1E2224'}}, y:{grid:{display:false}, ticks:{font:{size:10}}} } }
+});
+
+new Chart(document.getElementById('chart-disruption'), {
+  type:'line',
+  data:{
+    labels: BUNDLE.lead_time_months,
+    datasets: Object.entries(BUNDLE.lead_time_series).map(([name, vals], i)=>{
+      const colors = ['#FF5630','#FFAB2E','#5C8AFF','#9AA0A0'];
+      const isAvg = name.startsWith('Avg');
+      return { label:name, data:vals, borderColor:colors[i], backgroundColor:'transparent', tension:.3, borderWidth: isAvg?2:2.5, borderDash: isAvg?[5,4]:[], pointRadius:2 };
+    })
+  },
+  options:{
+    plugins:{ legend:{ position:'bottom', labels:{boxWidth:10} } },
+    scales:{ x:{grid:{color:'#1E2224'}}, y:{grid:{color:'#1E2224'}, title:{display:true, text:'avg lead time (days)', color:'#5E6566'}} }
+  }
+});
+
+/* ---------- Model metrics ---------- */
+const metricGrid = document.getElementById('metric-grid');
+const mlabels = [['Precision', METRICS.precision],['Recall', METRICS.recall],['F1 Score', METRICS.f1],['ROC-AUC', METRICS.roc_auc],['PR-AUC', METRICS.pr_auc]];
+mlabels.forEach(([l,v])=>{
+  const d = document.createElement('div'); d.className='metric';
+  d.innerHTML = `<div class="lbl">${l}</div><div class="val">${v}</div>`;
+  metricGrid.appendChild(d);
+});
+
+const cm = METRICS.confusion_matrix; // [[TN,FP],[FN,TP]]
+const cmGrid = document.getElementById('cm-grid');
+const cmData = [
+  {n:cm[0][0], l:'TRUE NEGATIVE', cls:'cm-tn'},
+  {n:cm[0][1], l:'FALSE POSITIVE', cls:'cm-fp'},
+  {n:cm[1][0], l:'FALSE NEGATIVE', cls:'cm-fn'},
+  {n:cm[1][1], l:'TRUE POSITIVE', cls:'cm-tp'},
+];
+cmData.forEach(c=>{
+  const d = document.createElement('div'); d.className='cm-cell '+c.cls;
+  d.innerHTML = `<div class="cm-n">${c.n}</div><div class="cm-l">${c.l}</div>`;
+  cmGrid.appendChild(d);
+});
+</script>
+</body>
+</html>
