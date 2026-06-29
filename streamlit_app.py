@@ -36,6 +36,13 @@ def load_data():
 
 try:
     model_output, model_features, feature_importance, products, metrics = load_data()
+    
+    # Rename columns to match expected names (if they exist)
+    if "stockout_risk" in model_output.columns:
+        model_output.rename(columns={"stockout_risk": "risk_score"}, inplace=True)
+    if "risk_category" in model_output.columns:
+        model_output.rename(columns={"risk_category": "risk_level"}, inplace=True)
+    
 except Exception as e:
     st.error(f"Error loading data: {e}")
     st.info("Run the pipeline first: `python generate_data.py && python feature_engineering.py && python model.py`")
@@ -65,7 +72,7 @@ if page == "📊 Dashboard Overview":
     col1.metric("🚨 High-Risk SKUs", f"{high_risk}/{total_skus}", f"{high_risk_pct:.1f}%")
     col2.metric("📦 Avg Days of Supply", f"{avg_days_supply:.1f} days", "All SKUs")
     col3.metric("🏢 Warehouses", model_output["warehouse_id"].nunique())
-    col4.metric("👥 Active Suppliers", model_output["supplier_id"].nunique())
+    col4.metric("👥 Suppliers in Data", model_output["supplier_id"].nunique())
     
     st.divider()
     
@@ -82,15 +89,15 @@ if page == "📊 Dashboard Overview":
             title="Stockout Risk Score Distribution"
         )
         fig.update_xaxes(title="Risk Score")
-        fig.update_yaxes(title="Number of SKUs")
+        fig.update_yaxes(title="Number of SKU-Warehouse Combinations")
         st.plotly_chart(fig, use_container_width=True)
     
     with col2:
         st.subheader("Risk by Category")
         risk_by_cat = model_output.groupby("category").agg({
             "risk_score": "mean",
-            "sku_id": "count"
-        }).rename(columns={"sku_id": "count"}).reset_index()
+            "sku": "count"
+        }).rename(columns={"sku": "count"}).reset_index()
         
         fig = px.bar(
             risk_by_cat,
@@ -124,9 +131,9 @@ if page == "📊 Dashboard Overview":
         st.plotly_chart(fig, use_container_width=True)
     
     with col2:
-        st.subheader("Recent Snapshot (Latest Date)")
+        st.subheader("Recent Snapshot (Latest Records)")
         latest_snapshot = model_output.nlargest(10, "risk_score")[
-            ["sku_id", "category", "warehouse_id", "risk_score", "days_of_supply"]
+            ["sku", "category", "warehouse_id", "risk_score", "days_of_supply", "on_hand_qty"]
         ].round(3)
         
         st.dataframe(latest_snapshot, use_container_width=True)
@@ -166,7 +173,7 @@ elif page == "🎯 Risk Scoring":
     )
     
     if len(high_risk_skus) > 0:
-        display_cols = ["sku_id", "category", "warehouse_id", "supplier_id", 
+        display_cols = ["sku", "category", "warehouse_id", "supplier_id", 
                        "risk_score", "days_of_supply", "on_hand_qty", "on_order_qty"]
         
         st.dataframe(
@@ -178,7 +185,7 @@ elif page == "🎯 Risk Scoring":
         # Recommendations
         st.subheader("Recommended Actions")
         for idx, row in high_risk_skus.head(5).iterrows():
-            with st.expander(f"📌 SKU {row['sku_id']} ({row['category']}) - Risk: {row['risk_score']:.2%}"):
+            with st.expander(f"📌 {row['sku']} ({row['category']}) - Risk: {row['risk_score']:.2%} - {row['action_needed']}"):
                 col1, col2 = st.columns(2)
                 col1.metric("Days of Supply", f"{row['days_of_supply']:.1f}")
                 col2.metric("On Hand", f"{row['on_hand_qty']:.0f} units")
@@ -293,10 +300,10 @@ elif page == "🔍 Deep Dive Analysis":
     cat_analysis = model_output.groupby("category").agg({
         "risk_score": ["mean", "std"],
         "days_of_supply": "mean",
-        "sku_id": "count"
+        "sku": "count"
     }).round(2)
     
-    cat_analysis.columns = ["Avg Risk", "Risk Std Dev", "Avg DOS", "# SKUs"]
+    cat_analysis.columns = ["Avg Risk", "Risk Std Dev", "Avg DOS", "# Records"]
     st.dataframe(cat_analysis, use_container_width=True)
     
     st.divider()
@@ -304,8 +311,8 @@ elif page == "🔍 Deep Dive Analysis":
     # Correlation with risk
     st.subheader("Factors Correlation with Risk Score")
     
-    correlation_cols = ["days_of_supply", "demand_volatility_30d", "avg_sales_30d",
-                       "on_hand_qty", "base_lead_time_days", "reliability_score"]
+    correlation_cols = [col for col in ["days_of_supply", "demand_volatility_30d", "avg_sales_30d",
+                       "on_hand_qty", "base_lead_time_days", "reliability_score"] if col in model_output.columns]
     
     correlations = model_output[correlation_cols + ["risk_score"]].corr()["risk_score"].drop("risk_score").sort_values()
     
@@ -330,7 +337,7 @@ st.markdown("""
 - Data: Simulated 1 year of daily demand, inventory, and purchase orders
 - Features: SQL business logic + Python feature engineering
 - Model: Logistic Regression classifier (ROC-AUC: 0.84)
-- Output: Risk scores for 160 SKUs × 4 warehouses
+- Output: Risk scores for 160 SKU-Warehouse combinations
 
 📖 [View Repository](https://github.com/snehashrotriya0424/-supply-chain-stockout-risk-pipeline)
 """)
