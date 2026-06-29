@@ -27,7 +27,7 @@ from sklearn.metrics import (
     average_precision_score, confusion_matrix, classification_report
 )
 
-df = pd.read_csv("data/processed/model_features.csv", parse_dates=["date"])
+df = pd.read_csv("model_features.csv", parse_dates=["date"])
 df = pd.get_dummies(df, columns=["category"], prefix="cat")
 
 feature_cols = [c for c in df.columns if c not in
@@ -96,24 +96,24 @@ if best_model_name == "random_forest":
     importances = importances.sort_values(ascending=False)
     print("\nTop feature importances:")
     print(importances.head(8).round(3))
-    importances.to_csv("data/processed/feature_importance.csv", header=["importance"])
+    importances.to_csv("feature_importance.csv", header=["importance"])
 else:
     coefs = pd.Series(final_model.coef_[0], index=feature_cols)
     coefs = coefs.reindex(coefs.abs().sort_values(ascending=False).index)
     print("\nTop standardized coefficients (logistic regression):")
     print(coefs.head(8).round(3))
-    coefs.to_csv("data/processed/feature_importance.csv", header=["coefficient"])
+    coefs.to_csv("feature_importance.csv", header=["coefficient"])
 
 joblib.dump({"model": final_model, "scaler": scaler if best_model_name == "logistic_regression" else None,
              "feature_cols": feature_cols, "threshold": final_threshold,
-             "model_name": best_model_name}, "data/processed/stockout_model.joblib")
+             "model_name": best_model_name}, "stockout_model.joblib")
 
-pd.Series(results).to_json("data/processed/model_metrics.json", indent=2)
+pd.Series(results).to_json("model_metrics.json", indent=2)
 
 # =====================================================================
 # Apply the model to the LATEST snapshot -> the live risk score table
 # =====================================================================
-latest = pd.read_csv("data/processed/latest_snapshot_features.csv")
+latest = pd.read_csv("latest_snapshot_features.csv")
 latest_enc = pd.get_dummies(latest, columns=["category"], prefix="cat")
 for c in feature_cols:
     if c not in latest_enc.columns:
@@ -125,16 +125,18 @@ if best_model_name == "logistic_regression":
 else:
     risk_proba = final_model.predict_proba(X_live)[:, 1]
 
-latest["stockout_risk_score"] = risk_proba.round(3)
+# ✅ FIXED: Column name matches what streamlit_app.py expects
+latest["risk_score"] = risk_proba.round(3)
 latest["risk_tier"] = pd.cut(
-    latest["stockout_risk_score"],
+    latest["risk_score"],
     bins=[-0.01, 0.3, 0.6, 1.0], labels=["Low", "Medium", "High"]
 )
-latest["recommended_action"] = np.select = np.where(
+latest["action_needed"] = np.where(
     latest["risk_tier"] == "High", "Place PO this week",
     np.where(latest["risk_tier"] == "Medium", "Monitor / review in 7 days", "No action needed")
 )
 
-latest.to_csv("data/processed/model_output.csv", index=False)
+# ✅ FIXED: Save to root directory (where streamlit_app.py looks for it)
+latest.to_csv("model_output.csv", index=False)
 print("\nLive risk scoring complete:", len(latest), "sku-warehouse pairs")
-print(latest.risk_tier.value_counts())
+print(latest["risk_tier"].value_counts())
