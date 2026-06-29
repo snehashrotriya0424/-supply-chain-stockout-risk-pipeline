@@ -3,7 +3,6 @@ import pandas as pd
 import json
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import numpy as np
 
 # Page config
@@ -32,20 +31,27 @@ def load_data():
     with open("model_metrics.json") as f:
         metrics = json.load(f)
     
+    # Debug: print actual columns
+    print("Columns in model_output:", model_output.columns.tolist())
+    
     return model_output, model_features, feature_importance, products, metrics
 
 try:
     model_output, model_features, feature_importance, products, metrics = load_data()
     
-    # Rename columns to match expected names (if they exist)
+    # Rename stockout_risk to risk_score if it exists
     if "stockout_risk" in model_output.columns:
         model_output.rename(columns={"stockout_risk": "risk_score"}, inplace=True)
-    if "risk_category" in model_output.columns:
-        model_output.rename(columns={"risk_category": "risk_level"}, inplace=True)
+    
+    # Verify risk_score exists
+    if "risk_score" not in model_output.columns:
+        st.error("❌ Column 'risk_score' or 'stockout_risk' not found in model_output.csv")
+        st.write("Available columns:", model_output.columns.tolist())
+        st.stop()
     
 except Exception as e:
-    st.error(f"Error loading data: {e}")
-    st.info("Run the pipeline first: `python generate_data.py && python feature_engineering.py && python model.py`")
+    st.error(f"❌ Error loading data: {str(e)}")
+    st.info("**Steps to fix:**\n1. Run: `python generate_data.py`\n2. Run: `python feature_engineering.py`\n3. Run: `python model.py`")
     st.stop()
 
 # Sidebar navigation
@@ -71,8 +77,8 @@ if page == "📊 Dashboard Overview":
     
     col1.metric("🚨 High-Risk SKUs", f"{high_risk}/{total_skus}", f"{high_risk_pct:.1f}%")
     col2.metric("📦 Avg Days of Supply", f"{avg_days_supply:.1f} days", "All SKUs")
-    col3.metric("🏢 Warehouses", model_output["warehouse_id"].nunique())
-    col4.metric("👥 Suppliers in Data", model_output["supplier_id"].nunique())
+    col3.metric("🏢 Warehouses", int(model_output["warehouse_id"].nunique()))
+    col4.metric("👥 Suppliers in Data", int(model_output["supplier_id"].nunique()))
     
     st.divider()
     
@@ -119,6 +125,7 @@ if page == "📊 Dashboard Overview":
         st.subheader("Days of Supply by Warehouse")
         dos_by_wh = model_output.groupby("warehouse_id")["days_of_supply"].mean().reset_index()
         dos_by_wh.columns = ["Warehouse", "Avg Days of Supply"]
+        dos_by_wh["Warehouse"] = dos_by_wh["Warehouse"].astype(str)
         
         fig = px.bar(
             dos_by_wh,
@@ -131,12 +138,13 @@ if page == "📊 Dashboard Overview":
         st.plotly_chart(fig, use_container_width=True)
     
     with col2:
-        st.subheader("Recent Snapshot (Latest Records)")
+        st.subheader("Top 10 Highest Risk SKU-Warehouse Combinations")
         latest_snapshot = model_output.nlargest(10, "risk_score")[
             ["sku", "category", "warehouse_id", "risk_score", "days_of_supply", "on_hand_qty"]
-        ].round(3)
+        ].copy()
+        latest_snapshot = latest_snapshot.round(3)
         
-        st.dataframe(latest_snapshot, use_container_width=True)
+        st.dataframe(latest_snapshot, use_container_width=True, hide_index=True)
 
 # ============================================================================
 # PAGE 2: RISK SCORING
@@ -145,7 +153,7 @@ elif page == "🎯 Risk Scoring":
     st.header("SKU Risk Scoring & Recommendations")
     
     # Risk thresholds
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     high_threshold = col1.slider("High Risk Threshold", 0.0, 1.0, 0.5)
     medium_threshold = col2.slider("Medium Risk Threshold", 0.0, 1.0, 0.3)
     
@@ -160,9 +168,9 @@ elif page == "🎯 Risk Scoring":
     risk_counts = model_output["risk_category"].value_counts()
     
     col1, col2, col3 = st.columns(3)
-    col1.metric("🟢 Low Risk", risk_counts.get("Low", 0))
-    col2.metric("🟡 Medium Risk", risk_counts.get("Medium", 0))
-    col3.metric("🔴 High Risk", risk_counts.get("High", 0))
+    col1.metric("🟢 Low Risk", int(risk_counts.get("Low", 0)))
+    col2.metric("🟡 Medium Risk", int(risk_counts.get("Medium", 0)))
+    col3.metric("🔴 High Risk", int(risk_counts.get("High", 0)))
     
     st.divider()
     
@@ -179,27 +187,32 @@ elif page == "🎯 Risk Scoring":
         st.dataframe(
             high_risk_skus[display_cols].round(2),
             use_container_width=True,
-            height=400
+            height=400,
+            hide_index=True
         )
         
         # Recommendations
         st.subheader("Recommended Actions")
         for idx, row in high_risk_skus.head(5).iterrows():
-            with st.expander(f"📌 {row['sku']} ({row['category']}) - Risk: {row['risk_score']:.2%} - {row['action_needed']}"):
+            action_text = f"{row['sku']} ({row['category']}) - Risk: {row['risk_score']:.2%}"
+            with st.expander(f"📌 {action_text}"):
                 col1, col2 = st.columns(2)
                 col1.metric("Days of Supply", f"{row['days_of_supply']:.1f}")
                 col2.metric("On Hand", f"{row['on_hand_qty']:.0f} units")
                 
                 recommendations = []
                 if row["days_of_supply"] < 5:
-                    recommendations.append("⚠️ **Critical**: Days of supply < 5. Expedite purchase order immediately.")
+                    recommendations.append("⚠️ **CRITICAL**: Days of supply < 5. Expedite purchase order immediately.")
                 if row["on_hand_qty"] < row["avg_sales_7d"] * 3:
-                    recommendations.append("📦 **Stock Level Low**: On-hand inventory is less than 3 days of average sales.")
+                    recommendations.append("📦 **Stock Level Low**: On-hand inventory < 3 days of average sales.")
                 if row["reliability_score"] < 0.7:
-                    recommendations.append("🚚 **Supplier Concern**: Reliability score is below target. Consider alternate supplier.")
+                    recommendations.append("🚚 **Supplier Concern**: Reliability score below target. Consider alternate supplier.")
                 
-                for rec in recommendations:
-                    st.write(rec)
+                if recommendations:
+                    for rec in recommendations:
+                        st.warning(rec)
+                else:
+                    st.info("✓ Standard monitoring recommended")
     else:
         st.success("✅ No high-risk SKUs detected!")
 
@@ -254,10 +267,10 @@ elif page == "📈 Model Performance":
     
     st.info(f"""
     **Interpretation:**
-    - True Negatives (✅): {tn} - Correctly predicted no stockout
-    - False Positives (⚠️): {fp} - Incorrectly predicted stockout
-    - False Negatives (❌): {fn} - Missed actual stockouts
-    - True Positives (🎯): {tp} - Correctly predicted stockouts
+    - True Negatives (✅): {tn} — Correctly predicted no stockout
+    - False Positives (⚠️): {fp} — Incorrectly predicted stockout (safe but conservative)
+    - False Negatives (❌): {fn} — Missed actual stockouts (worst case)
+    - True Positives (🎯): {tp} — Correctly predicted stockouts
     
     **Business Impact:** With recall of {perf_metrics['recall']:.1%}, the model catches **{perf_metrics['recall']:.0%} of actual stockouts**.
     """)
@@ -286,10 +299,10 @@ elif page == "🔍 Deep Dive Analysis":
     
     st.markdown("""
     **Key Insights:**
-    - **Days of Supply** (coefficient: -6.04): Strongest predictor. Higher days = lower stockout risk.
-    - **Demand Volatility** (0.62): Higher volatility increases risk.
-    - **Average Sales** (-0.56): Stable, predictable sales reduce risk.
-    - **Reliability Score** (-0.23): More reliable suppliers reduce risk.
+    - **Days of Supply** (-6.04): Strongest predictor. ↑ days = ↓ risk
+    - **Demand Volatility** (+0.62): Higher volatility increases risk
+    - **Average Sales** (-0.56): Stable sales reduce risk
+    - **Reliability Score** (-0.23): Reliable suppliers reduce risk
     """)
     
     st.divider()
@@ -309,23 +322,26 @@ elif page == "🔍 Deep Dive Analysis":
     st.divider()
     
     # Correlation with risk
-    st.subheader("Factors Correlation with Risk Score")
+    st.subheader("Feature Correlation with Risk Score")
     
     correlation_cols = [col for col in ["days_of_supply", "demand_volatility_30d", "avg_sales_30d",
                        "on_hand_qty", "base_lead_time_days", "reliability_score"] if col in model_output.columns]
     
-    correlations = model_output[correlation_cols + ["risk_score"]].corr()["risk_score"].drop("risk_score").sort_values()
-    
-    fig = px.bar(
-        x=correlations.values,
-        y=correlations.index,
-        orientation="h",
-        color=correlations.values,
-        color_continuous_scale="RdBu",
-        title="Feature Correlation with Stockout Risk"
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
+    if correlation_cols:
+        correlations = model_output[correlation_cols + ["risk_score"]].corr()["risk_score"].drop("risk_score").sort_values()
+        
+        fig = px.bar(
+            x=correlations.values,
+            y=correlations.index,
+            orientation="h",
+            color=correlations.values,
+            color_continuous_scale="RdBu",
+            title="Feature Correlation with Stockout Risk"
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning("Required correlation columns not found in data")
 
 # ============================================================================
 # FOOTER
@@ -334,10 +350,10 @@ st.divider()
 st.markdown("""
 ---
 **About this Pipeline:**
-- Data: Simulated 1 year of daily demand, inventory, and purchase orders
-- Features: SQL business logic + Python feature engineering
-- Model: Logistic Regression classifier (ROC-AUC: 0.84)
-- Output: Risk scores for 160 SKU-Warehouse combinations
+- **Data**: Simulated 1 year of daily demand, inventory, and purchase orders (40 SKUs × 4 warehouses × 10 suppliers)
+- **Architecture**: SQL business logic → Python feature engineering → ML classification
+- **Model**: Logistic Regression (ROC-AUC: 0.84, Recall: 0.76)
+- **Output**: Real-time risk scores for stockout prediction
 
 📖 [View Repository](https://github.com/snehashrotriya0424/-supply-chain-stockout-risk-pipeline)
 """)
