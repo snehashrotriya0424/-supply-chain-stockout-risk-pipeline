@@ -2,7 +2,10 @@
 
 **An end-to-end analytics pipeline — SQL → Python/ML → Power BI — built on a simulated multi-warehouse retail supply chain (40 SKUs, 4 warehouses, 10 suppliers, 1 year of daily data).**
 
+[![Live Demo](https://img.shields.io/badge/Live-Demo-2ea44f?style=for-the-badge&logo=streamlit)](https://snehashrotriya0424.github.io/demo-link/#disruption)
 
+## 🚀 Live Demo
+👉https://snehashrotriya0424.github.io/demo-link/#disruption
 
 This isn't a single notebook or a single dashboard. It's a pipeline where each stage produces a real artifact that the next stage consumes — the same shape as a production analytics system, scaled down to something one person can build and explain end-to-end.
 
